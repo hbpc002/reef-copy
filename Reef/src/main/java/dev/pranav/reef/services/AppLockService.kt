@@ -54,20 +54,21 @@ class AppLockService : Service() {
         val blockReason = UsageTracker.checkBlockReason(this, currentApp)
         if (blockReason != UsageTracker.BlockReason.NONE) return
 
-        val limitMs = AppLimits.getLockDurationMs(currentApp)
+        val limitMs = AppLimits.getLimit(currentApp)
         if (limitMs <= 0) return
+
+        val lockUntilMs = AppLimits.getLockUntilMs(currentApp)
+        val now = System.currentTimeMillis()
+
+        if (lockUntilMs > now) {
+            return
+        }
 
         val todayUsage = UsageTracker.getTodayUsage(this, currentApp)
         if (todayUsage >= limitMs) {
-            val lockUntilMs = AppLimits.getLockUntilMs(currentApp)
-            if (lockUntilMs > System.currentTimeMillis()) {
-                Log.d(TAG, "App $currentApp is locked until $lockUntilMs")
-                return
-            }
-
             val lockDurationMs = AppLimits.getLockDurationMs(currentApp)
             if (lockDurationMs > 0) {
-                AppLimits.setLockUntil(currentApp, System.currentTimeMillis() + lockDurationMs)
+                AppLimits.setLockUntil(currentApp, now + lockDurationMs)
                 Log.d(TAG, "Locked $currentApp for ${lockDurationMs / 60000} minutes")
                 showLockedNotification(currentApp)
             }
