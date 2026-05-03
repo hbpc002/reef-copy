@@ -11,6 +11,7 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Info
+import androidx.compose.material.icons.rounded.Lock
 import androidx.compose.material.icons.rounded.Notifications
 import androidx.compose.material.icons.rounded.Timer
 import androidx.compose.material3.*
@@ -23,7 +24,9 @@ import androidx.compose.ui.unit.dp
 import androidx.core.content.edit
 import dev.pranav.reef.AboutActivity
 import dev.pranav.reef.R
+import dev.pranav.reef.services.AppLockService
 import dev.pranav.reef.ui.about.DonateButton
+import dev.pranav.reef.util.AppLimits
 import dev.pranav.reef.util.append
 import dev.pranav.reef.util.prefs
 
@@ -34,6 +37,17 @@ fun MainSettingsContent(
 ) {
     val context = LocalContext.current
     var enableDND by remember { mutableStateOf(prefs.getBoolean("enable_dnd", false)) }
+    var autoLockEnabled by remember { mutableStateOf(prefs.getBoolean("auto_lock_enabled", false)) }
+
+    fun toggleAutoLock(enabled: Boolean) {
+        autoLockEnabled = enabled
+        prefs.edit { putBoolean("auto_lock_enabled", enabled) }
+        if (enabled) {
+            AppLockService.start(context)
+        } else {
+            AppLockService.stop(context)
+        }
+    }
 
     val menuItems = listOf(
         SettingsMenuItem(
@@ -60,7 +74,7 @@ fun MainSettingsContent(
         contentPadding = contentPadding.append(horizontal = 16.dp)
     ) {
         item {
-            SettingsCard(index = 0, listSize = 1) {
+            SettingsCard(index = 0, listSize = 2) {
                 ListItem(
                     modifier = Modifier
                         .clickable {
@@ -87,6 +101,38 @@ fun MainSettingsContent(
                                 enableDND = it
                                 prefs.edit { putBoolean("enable_dnd", it) }
                             }
+                        )
+                    },
+                    colors = ListItemDefaults.colors(containerColor = Color.Transparent)
+                )
+            }
+        }
+
+        item {
+            SettingsCard(index = 1, listSize = 2) {
+                ListItem(
+                    modifier = Modifier
+                        .clickable { toggleAutoLock(!autoLockEnabled) }
+                        .padding(4.dp),
+                    leadingContent = {
+                        Icon(Icons.Rounded.Lock, contentDescription = null)
+                    },
+                    headlineContent = {
+                        Text(
+                            text = "Auto Lock",
+                            style = MaterialTheme.typography.titleMedium
+                        )
+                    },
+                    supportingContent = {
+                        Text(
+                            text = "Automatically lock apps when daily limit is reached",
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                    },
+                    trailingContent = {
+                        Switch(
+                            checked = autoLockEnabled,
+                            onCheckedChange = { toggleAutoLock(it) }
                         )
                     },
                     colors = ListItemDefaults.colors(containerColor = Color.Transparent)

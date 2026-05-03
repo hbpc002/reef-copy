@@ -91,6 +91,11 @@
             android:directBootAware="true"
             android:exported="false" />
 
+        <service
+            android:name=".services.AppLockService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse" />
+
         <receiver
             android:name=".receivers.BootReceiver"
             android:directBootAware="true"

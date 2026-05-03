@@ -66,7 +66,16 @@ class BlockerService: AccessibilityService() {
         }
 
         val blockReason = UsageTracker.checkBlockReason(this, pkg)
-        if (blockReason == UsageTracker.BlockReason.NONE) return
+        if (blockReason == UsageTracker.BlockReason.NONE) {
+            val autoLockReason = UsageTracker.checkAutoLockReason(this, pkg)
+            if (autoLockReason == UsageTracker.BlockReason.DAILY_LIMIT || autoLockReason == UsageTracker.BlockReason.AUTO_LOCK) {
+                Log.d("BlockerService", "Blocking $pkg due to auto lock")
+                performGlobalAction(GLOBAL_ACTION_HOME)
+                showAutoLockNotification(pkg)
+                return
+            }
+            return
+        }
         if (blockReason != UsageTracker.BlockReason.ROUTINE_LIMIT && Whitelist.isWhitelisted(pkg)) return
 
         Log.d("BlockerService", "Blocking $pkg due to ${blockReason.name}")
@@ -138,6 +147,31 @@ class BlockerService: AccessibilityService() {
             .build()
 
         NotificationManagerCompat.from(this).notify(pkg.hashCode(), notification)
+    }
+
+    @SuppressLint("MissingPermission")
+    private fun showAutoLockNotification(pkg: String) {
+        val manager = NotificationManagerCompat.from(this)
+        if (manager.areNotificationsEnabled().not()) return
+
+        val appName = try {
+            packageManager.getApplicationLabel(packageManager.getApplicationInfo(pkg, 0))
+        } catch (_: PackageManager.NameNotFoundException) {
+            pkg
+        }
+
+        val lockDurationMin = AppLimits.getLockDurationMs(pkg) / 60000
+
+        val notification = NotificationCompat.Builder(this, BLOCKER_CHANNEL_ID)
+            .setContentTitle(getString(R.string.app_blocked))
+            .setContentText(getString(R.string.app_locked_for_minutes, appName, lockDurationMin))
+            .setSmallIcon(R.drawable.ic_launcher_foreground)
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setGroup(BLOCKER_GROUP_KEY)
+            .setAutoCancel(true)
+            .build()
+
+        manager.notify(pkg.hashCode(), notification)
     }
 
     override fun onInterrupt() {}

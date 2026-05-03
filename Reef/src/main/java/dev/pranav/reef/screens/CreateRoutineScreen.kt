@@ -1422,26 +1422,38 @@ private fun LimitPickerDialog(
 private fun loadAccessibleApps(context: android.content.Context): List<Pair<String, String>> {
     val pm = context.packageManager
 
-    val launcherPackages = pm.queryIntentActivities(
-        android.content.Intent(android.content.Intent.ACTION_MAIN)
-            .addCategory(android.content.Intent.CATEGORY_LAUNCHER),
-        0
-    ).map { it.activityInfo.packageName }.toSet()
+    val launcherPackages = try {
+        pm.queryIntentActivities(
+            android.content.Intent(android.content.Intent.ACTION_MAIN)
+                .addCategory(android.content.Intent.CATEGORY_LAUNCHER),
+            0
+        ).map { it.activityInfo.packageName }.toSet()
+    } catch (e: Exception) {
+        emptySet()
+    }
 
-    val overlayPackages = pm.getInstalledPackages(android.content.pm.PackageManager.GET_PERMISSIONS)
-        .filter { pkgInfo ->
-            pkgInfo.requestedPermissions?.contains(android.Manifest.permission.SYSTEM_ALERT_WINDOW) == true
-        }
-        .map { it.packageName }
-        .toSet()
+    val overlayPackages = try {
+        pm.getInstalledPackages(android.content.pm.PackageManager.GET_PERMISSIONS)
+            .filter { pkgInfo ->
+                pkgInfo.requestedPermissions?.contains(android.Manifest.permission.SYSTEM_ALERT_WINDOW) == true
+            }
+            .map { it.packageName }
+            .toSet()
+    } catch (e: Exception) {
+        emptySet()
+    }
 
     val accessible = launcherPackages + overlayPackages
 
-    return pm.getInstalledApplications(0)
-        .filter { it.packageName != context.packageName }
-        .filter { it.packageName in accessible }
-        .sortedBy { pm.getApplicationLabel(it).toString() }
-        .map { it.packageName to pm.getApplicationLabel(it).toString() }
+    return try {
+        pm.getInstalledApplications(android.content.pm.PackageManager.GET_META_DATA)
+            .filter { it.packageName != context.packageName }
+            .filter { it.packageName in accessible || accessible.isEmpty() }
+            .sortedBy { pm.getApplicationLabel(it).toString() }
+            .map { it.packageName to pm.getApplicationLabel(it).toString() }
+    } catch (e: Exception) {
+        emptyList()
+    }
 }
 
 private fun formatTime(time: LocalTime): String {

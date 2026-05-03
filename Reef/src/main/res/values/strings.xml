@@ -325,6 +325,9 @@
     <string name="reached_limit">%1$s has reached its limit</string>
     <string name="distraction_blocked">Distraction Blocked</string>
     <string name="you_were_using">You were using %1$s</string>
+    <string name="app_locked">App Locked</string>
+    <string name="app_locked_message">%1$s has reached its daily limit</string>
+    <string name="app_locked_for_minutes">%1$s locked for %2$d minutes</string>
 
     <!-- Notification Helper strings -->
     <string name="blocker_channel_name">Content Blocker</string>

@@ -13,7 +13,8 @@ object UsageTracker {
     enum class BlockReason {
         NONE,
         DAILY_LIMIT,
-        ROUTINE_LIMIT
+        ROUTINE_LIMIT,
+        AUTO_LOCK
     }
 
     fun shouldBlock(context: Context, packageName: String): Boolean {
@@ -109,5 +110,51 @@ object UsageTracker {
 
         systemAppCache[packageName] = shouldSkip
         return shouldSkip
+    }
+
+    fun checkAutoLockReason(context: Context, packageName: String): BlockReason {
+        if (shouldSkipPackage(context, packageName)) return BlockReason.NONE
+        if (Whitelist.isWhitelisted(packageName)) return BlockReason.NONE
+
+        if (!AppLimits.hasLimit(packageName)) return BlockReason.NONE
+
+        val usm = context.getSystemService(Context.USAGE_STATS_SERVICE) as UsageStatsManager
+        val dailyUsage = getDailyUsage(packageName, usm)
+        val limit = AppLimits.getLimit(packageName)
+
+        val lockUntilMs = AppLimits.getLockUntilMs(packageName)
+        if (lockUntilMs > System.currentTimeMillis()) {
+            return BlockReason.AUTO_LOCK
+        }
+
+        if (dailyUsage >= limit) {
+            return BlockReason.DAILY_LIMIT
+        }
+
+        return BlockReason.NONE
+    }
+
+    fun getTodayUsage(context: Context, packageName: String): Long {
+        val usm = context.getSystemService(Context.USAGE_STATS_SERVICE) as UsageStatsManager
+        return getDailyUsage(packageName, usm)
+    }
+
+    fun getCurrentForegroundApp(context: Context): String? {
+        val usm = context.getSystemService(Context.USAGE_STATS_SERVICE) as UsageStatsManager
+        val endTime = System.currentTimeMillis()
+        val startTime = endTime - 1000 * 60
+
+        val stats = usm.queryUsageStats(UsageStatsManager.INTERVAL_DAILY, startTime, endTime)
+        var mostRecent: String? = null
+        var mostRecentTime = 0L
+
+        for (stat in stats) {
+            if (stat.lastTimeUsed > mostRecentTime && stat.totalTimeInForeground > 0) {
+                mostRecent = stat.packageName
+                mostRecentTime = stat.lastTimeUsed
+            }
+        }
+
+        return mostRecent
     }
 }

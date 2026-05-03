@@ -8,19 +8,33 @@ import java.time.LocalDate
 import java.time.ZoneId
 
 private const val PREF_LIMITS = "app_limits"
+private const val PREF_LOCK = "app_lock"
 
 object AppLimits {
 
     private lateinit var prefs: SharedPreferences
+    private lateinit var lockPrefs: SharedPreferences
     private val limits = mutableMapOf<String, Long>()
-
+    private val lockDurations = mutableMapOf<String, Long>()
+    private val lockUntil = mutableMapOf<String, Long>()
     private val reminderSent = mutableMapOf<String, Long>()
 
     fun init(context: Context) {
         prefs = context.getSharedPreferences(PREF_LIMITS, Context.MODE_PRIVATE)
+        lockPrefs = context.getSharedPreferences(PREF_LOCK, Context.MODE_PRIVATE)
         limits.clear()
+        lockDurations.clear()
+        lockUntil.clear()
+
         prefs.all.forEach { (k, v) ->
             if (v is Long) limits[k] = v
+        }
+        lockPrefs.all.forEach { (k, v) ->
+            if (v is Long) lockDurations[k] = v
+        }
+        lockPrefs.all.forEach { (k, v) ->
+            val key = k.removePrefix("lock_until_")
+            if (k.startsWith("lock_until_") && v is Long) lockUntil[key] = v
         }
     }
 
@@ -34,6 +48,30 @@ object AppLimits {
 
     fun removeLimit(pkg: String) {
         limits.remove(pkg)
+        lockDurations.remove(pkg)
+        lockUntil.remove(pkg)
+    }
+
+    fun setLockDuration(pkg: String, minutes: Int) {
+        lockDurations[pkg] = minutes * 60_000L
+    }
+
+    fun getLockDurationMs(pkg: String): Long = lockDurations[pkg] ?: 0L
+
+    fun setLockUntil(pkg: String, untilMs: Long) {
+        lockUntil[pkg] = untilMs
+        lockPrefs.edit().putLong("lock_until_$pkg", untilMs).apply()
+    }
+
+    fun getLockUntilMs(pkg: String): Long = lockUntil[pkg] ?: 0L
+
+    fun clearExpiredLocks() {
+        val now = System.currentTimeMillis()
+        val expired = lockUntil.filter { it.value < now }.keys
+        expired.forEach {
+            lockUntil.remove(it)
+            lockPrefs.edit().remove("lock_until_$it").apply()
+        }
     }
 
     fun save() {
@@ -56,6 +94,8 @@ object AppLimits {
     fun markReminder(pkg: String) {
         reminderSent[pkg] = System.currentTimeMillis()
     }
+
+    fun isWhitelisted(pkg: String): Boolean = Whitelist.isWhitelisted(pkg)
 }
 
 

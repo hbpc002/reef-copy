@@ -42,8 +42,9 @@ fun DailyLimitScreen(
     appIcon: Drawable,
     packageName: String,
     existingLimitMinutes: Int,
+    existingLockDurationMinutes: Int,
     dailyData: List<HourlyUsageData>,
-    onSave: (Int) -> Unit,
+    onSave: (limitMinutes: Int, lockDurationMinutes: Int) -> Unit,
     onRemove: () -> Unit,
     onBackPressed: () -> Unit,
     onWeekChange: (Int) -> Unit = {},
@@ -74,6 +75,7 @@ fun DailyLimitScreen(
             appIcon = appIcon,
             packageName = packageName,
             existingLimitMinutes = existingLimitMinutes,
+            existingLockDurationMinutes = existingLockDurationMinutes,
             dailyData = dailyData,
             onSave = onSave,
             onRemove = onRemove,
@@ -100,8 +102,9 @@ private fun DailyLimitContent(
     appIcon: Drawable,
     packageName: String,
     existingLimitMinutes: Int,
+    existingLockDurationMinutes: Int,
     dailyData: List<HourlyUsageData>,
-    onSave: (Int) -> Unit,
+    onSave: (limitMinutes: Int, lockDurationMinutes: Int) -> Unit,
     onRemove: () -> Unit,
     weekOffset: Int,
     onWeekChange: (Int) -> Unit,
@@ -110,6 +113,7 @@ private fun DailyLimitContent(
 ) {
     var hours by remember { mutableIntStateOf(existingLimitMinutes / 60) }
     var minutes by remember { mutableIntStateOf(existingLimitMinutes % 60) }
+    var lockDuration by remember { mutableIntStateOf(existingLockDurationMinutes) }
 
     val totalMinutes = hours * 60 + minutes
     val averageUsage = dailyData.map { it.usageMinutes }.average().takeIf { !it.isNaN() } ?: 0.0
@@ -379,8 +383,45 @@ private fun DailyLimitContent(
 
         Spacer(modifier = Modifier.height(24.dp))
 
+        if (totalMinutes > 0) {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(20.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)
+            ) {
+                Column(
+                    modifier = Modifier.padding(20.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Text(
+                        text = "Lock Duration (after limit exceeded)",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold
+                    )
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        val lockOptions = listOf(0 to "None", 15 to "15m", 30 to "30m", 60 to "1h", 120 to "2h")
+                        lockOptions.forEach { (value, label) ->
+                            FilterChip(
+                                selected = lockDuration == value,
+                                onClick = { lockDuration = value },
+                                label = { Text(label) }
+                            )
+                        }
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+        }
+
         Button(
-            onClick = { onSave(totalMinutes) },
+            onClick = { onSave(totalMinutes, lockDuration) },
             modifier = Modifier.fillMaxWidth(),
             enabled = totalMinutes > 0
         ) {

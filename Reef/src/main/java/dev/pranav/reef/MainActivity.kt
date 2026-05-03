@@ -362,6 +362,8 @@ class MainActivity: ComponentActivity() {
                             }
                             val existingLimitMinutes =
                                 remember(pkgName) { (AppLimits.getLimit(pkgName) / 60000).toInt() }
+                            val existingLockDurationMinutes =
+                                remember(pkgName) { (AppLimits.getLockDurationMs(pkgName) / 60000).toInt() }
                             var weekOffset by remember { mutableIntStateOf(0) }
                             val dailyData by remember(pkgName, weekOffset) {
                                 derivedStateOf {
@@ -378,9 +380,11 @@ class MainActivity: ComponentActivity() {
                                 appIcon = appIcon,
                                 packageName = pkgName,
                                 existingLimitMinutes = existingLimitMinutes,
+                                existingLockDurationMinutes = existingLockDurationMinutes,
                                 dailyData = dailyData,
-                                onSave = { minutes ->
+                                onSave = { minutes, lockDuration ->
                                     AppLimits.setLimit(pkgName, minutes)
+                                    AppLimits.setLockDuration(pkgName, lockDuration)
                                     AppLimits.save()
                                     navController.popBackStack()
                                 },
