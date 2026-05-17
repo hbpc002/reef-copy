@@ -29,20 +29,43 @@ object UsageTracker {
         val limitWarningsEnabled = prefs.getBoolean("limit_warnings", true)
 
         // Routine limits are always enforced — whitelist does not bypass them
-        RoutineSessionManager.getLimitMs(packageName)?.let { limitMs ->
+        val routineLimitMs = RoutineSessionManager.getLimitMs(packageName)
+        val cyclicAppLimit = RoutineSessionManager.getCyclicConfig(packageName)
+
+        if (cyclicAppLimit != null) {
+            // Cyclic mode within routine: use cycle tracking, NOT total limit
+            val cyclicUsageMs = cyclicAppLimit.cyclicUsageMinutes!! * 60_000L
+            val cyclicLockMs = cyclicAppLimit.cyclicLockMinutes!! * 60_000L
+
+            if (RoutineSessionManager.isInCyclicLockPhase(packageName)) {
+                return BlockReason.CYCLIC_LOCK
+            }
+
+            val usageSinceSession = RoutineSessionManager.getUsageMs(context, packageName)
+            val cycleStartUsage = RoutineSessionManager.getCyclicUsageMs(packageName)
+            val cycleUsage = usageSinceSession - cycleStartUsage
+
+            if (cycleUsage >= cyclicUsageMs) {
+                RoutineSessionManager.setCyclicLockUntil(
+                    packageName, System.currentTimeMillis() + cyclicLockMs
+                )
+                android.util.Log.d("UsageTracker", "Cyclic lock for $packageName in routine")
+                return BlockReason.CYCLIC_LOCK
+            }
+        } else if (routineLimitMs != null) {
             val usageMs = RoutineSessionManager.getUsageMs(context, packageName)
 
             android.util.Log.d(
                 "UsageTracker",
-                "Routine check for $packageName: usage=$usageMs, limit=$limitMs"
+                "Routine check for $packageName: usage=$usageMs, limit=$routineLimitMs"
             )
 
-            if (limitWarningsEnabled && usageMs >= (limitMs * 0.85) && usageMs < limitMs) {
-                val timeRemaining = limitMs - usageMs
+            if (limitWarningsEnabled && usageMs >= (routineLimitMs * 0.85) && usageMs < routineLimitMs) {
+                val timeRemaining = routineLimitMs - usageMs
                 NotificationHelper.showReminderNotification(context, packageName, timeRemaining)
             }
 
-            if (usageMs >= limitMs) {
+            if (usageMs >= routineLimitMs) {
                 android.util.Log.d("UsageTracker", "BLOCKING $packageName due to routine limit")
                 return BlockReason.ROUTINE_LIMIT
             }

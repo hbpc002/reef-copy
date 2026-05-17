@@ -14,8 +14,12 @@ data class Routine(
 ) {
     data class AppLimit(
         val packageName: String,
-        val limitMinutes: Int
-    )
+        val limitMinutes: Int,
+        val cyclicUsageMinutes: Int? = null,
+        val cyclicLockMinutes: Int? = null
+    ) {
+        val isCyclic: Boolean get() = cyclicUsageMinutes != null && cyclicLockMinutes != null
+    }
 
     data class AppGroup(
         val id: String = UUID.randomUUID().toString(),

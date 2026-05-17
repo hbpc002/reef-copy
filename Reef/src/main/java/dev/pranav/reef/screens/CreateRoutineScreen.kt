@@ -458,9 +458,9 @@ fun CreateRoutineScreen(
 
     if (showAppSelector) {
         AppSelectorDialog(
-            onAppSelected = { packageName, _, limitMinutes ->
+            onAppSelected = { packageName, _, limitMinutes, cyclicUsage, cyclicLock ->
                 appLimits = appLimits.filter { it.packageName != packageName } +
-                        Routine.AppLimit(packageName, limitMinutes)
+                        Routine.AppLimit(packageName, limitMinutes, cyclicUsage, cyclicLock)
                 showAppSelector = false
             },
             onDismiss = { showAppSelector = false }
@@ -483,9 +483,15 @@ fun CreateRoutineScreen(
         LimitPickerDialog(
             appName = editAppName,
             initialMinutes = limit.limitMinutes,
-            onConfirm = { newMinutes ->
+            initialCyclicUsage = limit.cyclicUsageMinutes,
+            initialCyclicLock = limit.cyclicLockMinutes,
+            onConfirm = { newMinutes, cyclicUsage, cyclicLock ->
                 appLimits = appLimits.map {
-                    if (it.packageName == limit.packageName) it.copy(limitMinutes = newMinutes) else it
+                    if (it.packageName == limit.packageName) it.copy(
+                        limitMinutes = newMinutes,
+                        cyclicUsageMinutes = cyclicUsage,
+                        cyclicLockMinutes = cyclicLock
+                    ) else it
                 }
                 editingLimit = null
             },
@@ -776,7 +782,7 @@ private fun CreateGroupDialog(
                     selectedPackages = selectedPackages.toList(),
                     allApps = allApps,
                     individualLimits = individualLimits,
-                    onLimitChange = { pkg, minutes ->
+                    onLimitChange = { pkg, minutes, _cyclicUsage, _cyclicLock ->
                         individualLimits = individualLimits + (pkg to minutes)
                     },
                     limitDialogForPackage = limitDialogForPackage,
@@ -1075,7 +1081,7 @@ private fun IndividualLimitsStep(
     selectedPackages: List<String>,
     allApps: List<Pair<String, String>>,
     individualLimits: Map<String, Int>,
-    onLimitChange: (String, Int) -> Unit,
+    onLimitChange: (String, Int, Int?, Int?) -> Unit,
     limitDialogForPackage: String?,
     onShowLimitDialog: (String) -> Unit,
     onDismissLimitDialog: () -> Unit,
@@ -1149,8 +1155,8 @@ private fun IndividualLimitsStep(
         LimitPickerDialog(
             appName = appName,
             initialMinutes = individualLimits[limitDialogForPackage] ?: 30,
-            onConfirm = { minutes ->
-                onLimitChange(limitDialogForPackage, minutes)
+            onConfirm = { minutes, cyclicUsage, cyclicLock ->
+                onLimitChange(limitDialogForPackage, minutes, cyclicUsage, cyclicLock)
                 onDismissLimitDialog()
             },
             onDismiss = onDismissLimitDialog
@@ -1199,7 +1205,7 @@ private fun TimePickerDialog(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun AppSelectorDialog(
-    onAppSelected: (packageName: String, appName: String, limitMinutes: Int) -> Unit,
+    onAppSelected: (packageName: String, appName: String, limitMinutes: Int, cyclicUsageMinutes: Int?, cyclicLockMinutes: Int?) -> Unit,
     onDismiss: () -> Unit
 ) {
     val context = LocalContext.current
@@ -1302,8 +1308,8 @@ private fun AppSelectorDialog(
         val (packageName, appName) = selectedApp!!
         LimitPickerDialog(
             appName = appName,
-            onConfirm = { minutes ->
-                onAppSelected(packageName, appName, minutes)
+            onConfirm = { minutes, cyclicUsage, cyclicLock ->
+                onAppSelected(packageName, appName, minutes, cyclicUsage, cyclicLock)
                 selectedApp = null
             },
             onDismiss = { selectedApp = null }
@@ -1316,11 +1322,16 @@ private fun AppSelectorDialog(
 private fun LimitPickerDialog(
     appName: String,
     initialMinutes: Int = 15,
-    onConfirm: (Int) -> Unit,
+    initialCyclicUsage: Int? = null,
+    initialCyclicLock: Int? = null,
+    onConfirm: (Int, Int?, Int?) -> Unit,
     onDismiss: () -> Unit
 ) {
     val presets = listOf(5, 10, 15, 20, 30, 45, 60, 90, 120)
     var minutes by remember { mutableIntStateOf(initialMinutes) }
+    var isCyclic by remember { mutableStateOf(initialCyclicUsage != null) }
+    var cyclicUsage by remember { mutableIntStateOf(initialCyclicUsage ?: 15) }
+    var cyclicLock by remember { mutableIntStateOf(initialCyclicLock ?: 5) }
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
     ModalBottomSheet(
@@ -1332,7 +1343,7 @@ private fun LimitPickerDialog(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(start = 24.dp, end = 24.dp, bottom = 32.dp),
-            verticalArrangement = Arrangement.spacedBy(20.dp)
+            verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             Text(
                 text = stringResource(R.string.set_limit_for, appName),
@@ -1341,80 +1352,161 @@ private fun LimitPickerDialog(
                 textAlign = TextAlign.Center
             )
 
-            // Big value display
-            Text(
-                text = if (minutes == 0) stringResource(R.string.block_entirely)
-                else formatLimitTime(minutes),
-                style = MaterialTheme.typography.displaySmall,
-                color = if (minutes == 0) MaterialTheme.colorScheme.error
-                else MaterialTheme.colorScheme.primary,
-                modifier = Modifier.fillMaxWidth(),
-                textAlign = TextAlign.Center
-            )
-
-            // Stepper row
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
-                verticalAlignment = Alignment.CenterVertically
+                horizontalArrangement = Arrangement.Center
             ) {
-                FilledTonalButton(
-                    onClick = {
-                        if (minutes >= 15) minutes -= 15 else if (minutes > 0) minutes = 0
-                    },
-                    enabled = minutes > 0,
-                    shape = RoundedCornerShape(12.dp)
-                ) { Text("−15m") }
-
-                FilledTonalButton(
-                    onClick = { if (minutes >= 5) minutes -= 5 else if (minutes > 0) minutes = 0 },
-                    enabled = minutes > 0,
-                    shape = RoundedCornerShape(12.dp)
-                ) { Text("−5m") }
-
-                FilledTonalButton(
-                    onClick = { minutes += 5 },
-                    shape = RoundedCornerShape(12.dp)
-                ) { Text("+5m") }
-
-                FilledTonalButton(
-                    onClick = { minutes += 15 },
-                    shape = RoundedCornerShape(12.dp)
-                ) { Text("+15m") }
-            }
-
-            HorizontalDivider()
-
-            // Preset chips
-            FlowRow(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                presets.forEach { preset ->
-                    FilterChip(
-                        selected = minutes == preset,
-                        onClick = { minutes = preset },
-                        label = { Text(formatLimitTime(preset)) }
-                    )
-                }
                 FilterChip(
-                    selected = minutes == 0,
-                    onClick = { minutes = 0 },
-                    label = { Text(stringResource(R.string.block_entirely)) },
-                    colors = FilterChipDefaults.filterChipColors(
-                        selectedContainerColor = MaterialTheme.colorScheme.errorContainer,
-                        selectedLabelColor = MaterialTheme.colorScheme.onErrorContainer
-                    )
+                    selected = !isCyclic,
+                    onClick = {
+                        isCyclic = false
+                        if (minutes == 0) minutes = 15
+                    },
+                    label = { Text("总限额") }
+                )
+                Spacer(Modifier.width(12.dp))
+                FilterChip(
+                    selected = isCyclic,
+                    onClick = { isCyclic = true },
+                    label = { Text(stringResource(R.string.cyclic_mode)) }
                 )
             }
 
+            if (isCyclic) {
+                Text(
+                    text = stringResource(R.string.cyclic_usage_per_cycle),
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                RoutineMinuteStepper(value = cyclicUsage, onValueChange = { cyclicUsage = maxOf(1, it) })
+
+                HorizontalDivider()
+
+                Text(
+                    text = stringResource(R.string.cyclic_lock_per_cycle),
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                RoutineMinuteStepper(value = cyclicLock, onValueChange = { cyclicLock = maxOf(1, it) })
+            } else {
+                // Big value display
+                Text(
+                    text = if (minutes == 0) stringResource(R.string.block_entirely)
+                    else formatLimitTime(minutes),
+                    style = MaterialTheme.typography.displaySmall,
+                    color = if (minutes == 0) MaterialTheme.colorScheme.error
+                    else MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.fillMaxWidth(),
+                    textAlign = TextAlign.Center
+                )
+
+                // Stepper row
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    FilledTonalButton(
+                        onClick = {
+                            if (minutes >= 15) minutes -= 15 else if (minutes > 0) minutes = 0
+                        },
+                        enabled = minutes > 0,
+                        shape = RoundedCornerShape(12.dp)
+                    ) { Text("−15m") }
+
+                    FilledTonalButton(
+                        onClick = { if (minutes >= 5) minutes -= 5 else if (minutes > 0) minutes = 0 },
+                        enabled = minutes > 0,
+                        shape = RoundedCornerShape(12.dp)
+                    ) { Text("−5m") }
+
+                    FilledTonalButton(
+                        onClick = { minutes += 5 },
+                        shape = RoundedCornerShape(12.dp)
+                    ) { Text("+5m") }
+
+                    FilledTonalButton(
+                        onClick = { minutes += 15 },
+                        shape = RoundedCornerShape(12.dp)
+                    ) { Text("+15m") }
+                }
+
+                HorizontalDivider()
+
+                // Preset chips
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    presets.forEach { preset ->
+                        FilterChip(
+                            selected = minutes == preset,
+                            onClick = { minutes = preset },
+                            label = { Text(formatLimitTime(preset)) }
+                        )
+                    }
+                    FilterChip(
+                        selected = minutes == 0,
+                        onClick = { minutes = 0 },
+                        label = { Text(stringResource(R.string.block_entirely)) },
+                        colors = FilterChipDefaults.filterChipColors(
+                            selectedContainerColor = MaterialTheme.colorScheme.errorContainer,
+                            selectedLabelColor = MaterialTheme.colorScheme.onErrorContainer
+                        )
+                    )
+                }
+            }
+
             Button(
-                onClick = { onConfirm(minutes) },
+                onClick = {
+                    if (isCyclic) {
+                        onConfirm(0, cyclicUsage, cyclicLock)
+                    } else {
+                        onConfirm(minutes, null, null)
+                    }
+                },
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(14.dp)
             ) {
                 Text(stringResource(R.string.save_routine))
             }
+        }
+    }
+}
+
+@Composable
+private fun RoutineMinuteStepper(
+    value: Int,
+    onValueChange: (Int) -> Unit
+) {
+    var textValue by remember(value) { mutableStateOf(value.toString()) }
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        OutlinedTextField(
+            value = textValue,
+            onValueChange = { input ->
+                textValue = input
+                input.toIntOrNull()?.let { onValueChange(it) }
+            },
+            label = { Text("分钟") },
+            suffix = { Text("min") },
+            singleLine = true,
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+            modifier = Modifier.width(160.dp),
+            textStyle = MaterialTheme.typography.headlineSmall.copy(textAlign = TextAlign.Center)
+        )
+        Spacer(Modifier.height(12.dp))
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            FilledTonalButton(onClick = { onValueChange(value - 15) }, enabled = value > 1, shape = RoundedCornerShape(12.dp)) { Text("−15") }
+            Spacer(Modifier.width(6.dp))
+            FilledTonalButton(onClick = { onValueChange(value - 5) }, enabled = value > 1, shape = RoundedCornerShape(12.dp)) { Text("−5") }
+            Spacer(Modifier.width(6.dp))
+            FilledTonalButton(onClick = { onValueChange(value - 1) }, enabled = value > 1, shape = RoundedCornerShape(12.dp)) { Text("−1") }
+            Spacer(Modifier.width(6.dp))
+            FilledTonalButton(onClick = { onValueChange(value + 1) }, shape = RoundedCornerShape(12.dp)) { Text("+1") }
+            Spacer(Modifier.width(6.dp))
+            FilledTonalButton(onClick = { onValueChange(value + 5) }, shape = RoundedCornerShape(12.dp)) { Text("+5") }
+            Spacer(Modifier.width(6.dp))
+            FilledTonalButton(onClick = { onValueChange(value + 15) }, shape = RoundedCornerShape(12.dp)) { Text("+15") }
         }
     }
 }

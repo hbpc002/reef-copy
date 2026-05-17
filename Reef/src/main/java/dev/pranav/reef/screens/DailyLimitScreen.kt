@@ -281,8 +281,8 @@ private fun DailyLimitContent(
             CyclicConfigSection(
                 usageMinutes = cyclicUsage,
                 lockMinutes = cyclicLock,
-                onUsageChange = { cyclicUsage = it.coerceIn(1, 480) },
-                onLockChange = { cyclicLock = it.coerceIn(1, 480) }
+                onUsageChange = { cyclicUsage = maxOf(1, it) },
+                onLockChange = { cyclicLock = maxOf(1, it) }
             )
 
             Spacer(modifier = Modifier.height(16.dp))
@@ -430,7 +430,7 @@ private fun DailyLimitContent(
             Spacer(modifier = Modifier.height(24.dp))
 
             if (totalMinutes > 0) {
-                LockDurationSection(lockDuration = lockDuration, onLockDurationChange = { lockDuration = it })
+                LockDurationSection(lockDuration = lockDuration, onLockDurationChange = { lockDuration = maxOf(0, it) })
                 Spacer(modifier = Modifier.height(16.dp))
             }
 
@@ -537,49 +537,70 @@ private fun MinuteStepper(
     value: Int,
     onValueChange: (Int) -> Unit
 ) {
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.Center,
+    var textValue by remember(value) { mutableStateOf(value.toString()) }
+
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
         modifier = Modifier.fillMaxWidth()
     ) {
-        FilledTonalButton(
-            onClick = { onValueChange(value - 15) },
-            enabled = value > 1,
-            shape = RoundedCornerShape(12.dp)
-        ) { Text("−15") }
-        Spacer(Modifier.width(8.dp))
-        FilledTonalButton(
-            onClick = { onValueChange(value - 5) },
-            enabled = value > 1,
-            shape = RoundedCornerShape(12.dp)
-        ) { Text("−5") }
-        Spacer(Modifier.width(8.dp))
-        FilledTonalButton(
-            onClick = { onValueChange(value - 1) },
-            enabled = value > 1,
-            shape = RoundedCornerShape(12.dp)
-        ) { Text("−1") }
-
-        Text(
-            text = "$value min",
-            fontSize = 28.sp,
-            fontWeight = FontWeight.Bold,
-            modifier = Modifier.padding(horizontal = 16.dp)
+        OutlinedTextField(
+            value = textValue,
+            onValueChange = { input ->
+                textValue = input
+                input.toIntOrNull()?.let { onValueChange(it) }
+            },
+            label = { Text("分钟") },
+            suffix = { Text("min") },
+            singleLine = true,
+            keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                keyboardType = androidx.compose.ui.text.input.KeyboardType.Number
+            ),
+            modifier = Modifier.width(160.dp),
+            textStyle = MaterialTheme.typography.headlineSmall.copy(
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center
+            )
         )
 
-        FilledTonalButton(
-            onClick = { onValueChange(value + 1) },
-            shape = RoundedCornerShape(12.dp)
-        ) { Text("+1") }
-        Spacer(Modifier.width(8.dp))
-        FilledTonalButton(
-            onClick = { onValueChange(value + 5) },
-            shape = RoundedCornerShape(12.dp)
-        ) { Text("+5") }
-        Spacer(Modifier.width(8.dp))
-        FilledTonalButton(
-            onClick = { onValueChange(value + 15) },
-            shape = RoundedCornerShape(12.dp)
-        ) { Text("+15") }
+        Spacer(Modifier.height(12.dp))
+
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.Center
+        ) {
+            FilledTonalButton(
+                onClick = { onValueChange(value - 15) },
+                enabled = value > 1,
+                shape = RoundedCornerShape(12.dp)
+            ) { Text("−15") }
+            Spacer(Modifier.width(8.dp))
+            FilledTonalButton(
+                onClick = { onValueChange(value - 5) },
+                enabled = value > 1,
+                shape = RoundedCornerShape(12.dp)
+            ) { Text("−5") }
+            Spacer(Modifier.width(8.dp))
+            FilledTonalButton(
+                onClick = { onValueChange(value - 1) },
+                enabled = value > 1,
+                shape = RoundedCornerShape(12.dp)
+            ) { Text("−1") }
+
+            Spacer(Modifier.width(8.dp))
+
+            FilledTonalButton(
+                onClick = { onValueChange(value + 1) },
+                shape = RoundedCornerShape(12.dp)
+            ) { Text("+1") }
+            Spacer(Modifier.width(8.dp))
+            FilledTonalButton(
+                onClick = { onValueChange(value + 5) },
+                shape = RoundedCornerShape(12.dp)
+            ) { Text("+5") }
+            Spacer(Modifier.width(8.dp))
+            FilledTonalButton(
+                onClick = { onValueChange(value + 15) },
+                shape = RoundedCornerShape(12.dp)
+            ) { Text("+15") }
+        }
     }
 }

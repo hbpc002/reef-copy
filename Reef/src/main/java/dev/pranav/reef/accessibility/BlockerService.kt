@@ -81,11 +81,15 @@ class BlockerService: AccessibilityService() {
             }
             return
         }
-        if (blockReason != UsageTracker.BlockReason.ROUTINE_LIMIT && Whitelist.isWhitelisted(pkg)) return
+        if (blockReason != UsageTracker.BlockReason.ROUTINE_LIMIT && blockReason != UsageTracker.BlockReason.CYCLIC_LOCK && Whitelist.isWhitelisted(pkg)) return
 
         Log.d("BlockerService", "Blocking $pkg due to ${blockReason.name}")
         performGlobalAction(GLOBAL_ACTION_HOME)
-        showBlockedNotification(pkg, blockReason)
+        if (blockReason == UsageTracker.BlockReason.CYCLIC_LOCK) {
+            showCyclicLockNotification(pkg)
+        } else {
+            showBlockedNotification(pkg, blockReason)
+        }
     }
 
     @SuppressLint("MissingPermission")

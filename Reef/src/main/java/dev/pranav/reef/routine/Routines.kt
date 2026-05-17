@@ -160,7 +160,9 @@ object Routines {
                 arr.getJSONObject(i).let { limitJson ->
                     Routine.AppLimit(
                         packageName = limitJson.getString("packageName"),
-                        limitMinutes = limitJson.getInt("limitMinutes")
+                        limitMinutes = limitJson.getInt("limitMinutes"),
+                        cyclicUsageMinutes = limitJson.optInt("cyclicUsageMinutes").takeIf { limitJson.has("cyclicUsageMinutes") },
+                        cyclicLockMinutes = limitJson.optInt("cyclicLockMinutes").takeIf { limitJson.has("cyclicLockMinutes") }
                     )
                 }
             }
@@ -225,6 +227,8 @@ object Routines {
                 put(JSONObject().apply {
                     put("packageName", limit.packageName)
                     put("limitMinutes", limit.limitMinutes)
+                    limit.cyclicUsageMinutes?.let { put("cyclicUsageMinutes", it) }
+                    limit.cyclicLockMinutes?.let { put("cyclicLockMinutes", it) }
                 })
             }
         })

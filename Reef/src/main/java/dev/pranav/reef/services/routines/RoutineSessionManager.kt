@@ -35,6 +35,31 @@ object RoutineSessionManager {
     @Volatile
     private var cachedSessions: List<ActiveSession>? = null
 
+    // Cyclic state tracking for routine sessions (not persisted)
+    private val cyclicCycleStartUsage = mutableMapOf<String, Long>()
+    private val cyclicLockUntil = mutableMapOf<String, Long>()
+
+    fun getCyclicConfig(packageName: String): Routine.AppLimit? {
+        val sessions = getActiveSessions()
+        for (session in sessions) {
+            val limit = dev.pranav.reef.routine.Routines.get(session.routineId)
+                ?.limits?.find { it.packageName == packageName && it.isCyclic }
+            if (limit != null) return limit
+        }
+        return null
+    }
+
+    fun getCyclicUsageMs(packageName: String): Long = cyclicCycleStartUsage[packageName] ?: 0L
+    fun setCyclicCycleStartUsage(pkg: String, usage: Long) { cyclicCycleStartUsage[pkg] = usage }
+    fun isInCyclicLockPhase(pkg: String): Boolean = cyclicLockUntil[pkg]?.let { it > System.currentTimeMillis() } ?: false
+    fun getCyclicLockUntilMs(pkg: String): Long = cyclicLockUntil[pkg] ?: 0L
+    fun setCyclicLockUntil(pkg: String, untilMs: Long) { cyclicLockUntil[pkg] = untilMs }
+
+    fun clearCyclicState() {
+        cyclicCycleStartUsage.clear()
+        cyclicLockUntil.clear()
+    }
+
     fun evaluateAndSync(context: Context) {
         val routines = dev.pranav.reef.routine.Routines.getAll()
         val now = System.currentTimeMillis()
@@ -153,6 +178,8 @@ object RoutineSessionManager {
             saveActiveSessions(sessions)
             NotificationHelper.syncRoutineNotification(context)
             Log.d(TAG, "Stopped session: $routineId. Remaining: ${sessions.size}")
+            cyclicCycleStartUsage.clear()
+            cyclicLockUntil.clear()
         }
     }
 

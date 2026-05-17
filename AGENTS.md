@@ -66,8 +66,64 @@ disown
 ```bash
 pkill -f "http.server 8081"
 ```
+注意：pkill 匹配到 nohup 中的 http.server 自身进程时会导致 shell 卡死，建议加 `|| true` 或单独执行。
+
+### 坑3：`getInstalledApplications` 在 API 36+ 仍受限
+
+即使有 `QUERY_ALL_PACKAGES` 权限，`getInstalledApplications(0)` 在某些设备上仍返回空或不全。
+**根因**: Android 包可见性限制在 API 36 上更严格，`QUERY_ALL_PACKAGES` 可能被 OEM 限制。
+**正确做法**: 用 `LauncherApps.getActivityList(null, userHandle)` 代替，该 API 由系统 LauncherApps 服务提供，不受包可见性影响，且自带用户双开/分身感知。
+
+### 坑4：国产 ROM 任务管理划掉应用会关闭无障碍
+
+MIUI、ColorOS、Funtouch OS 等系统在任务管理划掉应用时不仅杀进程，还会**自动关闭该应用的无障碍服务权限**。
+**解决方式**:
+- 前台保活服务 + `onTaskRemoved` 通过 AlarmManager 1s 后重启
+- 但无法编程式重新启用无障碍 — 只能用户手动恢复
+- 引导用户锁住多任务（长按卡片点锁）+ 开启自启动 + 关闭电池优化
+
+### 坑5：前台服务需要 POST_NOTIFICATIONS 权限
+
+API 33+ 上 `startForeground()` 如果没有 `POST_NOTIFICATIONS` 权限会抛 `SecurityException`，导致整个进程崩溃。
+**解决方式**: 确保请求了 `POST_NOTIFICATIONS` 权限，并且在服务启动时 try-catch。
+
+### 坑6：编译缓存掩盖错误
+
+修改某个文件时如果该文件广泛被引用或依赖了特定 API，增量编译可能掩盖了原有的编译错误。
+**例子**: `MainSettingsScreen.kt` 的 `contentPadding.append()` 不存在，但因为缓存一直没被发现；删除 Import（DonateButton）触发了该文件完整重编译，错误才暴露。
+**教训**: 修改文件后如果出现与修改无关的错误，检查是否是被缓存掩盖的旧问题。必要时 `./gradlew clean` 确认。
 
 ## 功能改动记录
+
+### 2026-05-17: 循环限制 + 自定义锁定 + 保活 + 移除捐赠
+
+**改动:**
+- 锁定时长可自定义（分钟步进器 ±1/±5/±15，而非 5 个固定预设）
+- 新增循环限制模式：每日限额/循环限制 两种模式切换（FilterChip）
+  - 循环模式: 用 X 分钟 → 锁 Y 分钟 → 继续用 → 再锁 → ...
+- KeepAliveService 前台保活服务 + onTaskRemoved AlarmManager 自启 + 服务恢复
+- 移除主页面、设置页、关于页的捐赠按钮
+- ReefWorker 无障碍关闭通知增加「重新开启」按钮直接跳转系统设置
+- `loadAccessibleApps` 改用 `LauncherApps.getActivityList()` 修复空列表
+
+**改动文件:**
+- `Reef/src/main/java/dev/pranav/reef/util/AppLimits.kt` — CyclicConfig + 状态存储
+- `Reef/src/main/java/dev/pranav/reef/screens/DailyLimitScreen.kt` — 循环模式 UI + 自定义步进器
+- `Reef/src/main/java/dev/pranav/reef/MainActivity.kt` — 循环配置保存
+- `Reef/src/main/java/dev/pranav/reef/services/AppLockService.kt` — 循环锁定逻辑
+- `Reef/src/main/java/dev/pranav/reef/accessibility/UsageTracker.kt` — CYCLIC_LOCK BlockReason
+- `Reef/src/main/java/dev/pranav/reef/accessibility/BlockerService.kt` — 循环锁定通知
+- `Reef/src/main/java/dev/pranav/reef/services/KeepAliveService.kt` (新增)
+- `Reef/src/main/java/dev/pranav/reef/App.kt` — KeepAliveService 启动
+- `Reef/src/main/java/dev/pranav/reef/MainScreen.kt` — 移除 DonateDialog
+- `Reef/src/main/java/dev/pranav/reef/screens/MainSettingsScreen.kt` — 移除 DonateButton
+- `Reef/src/main/java/dev/pranav/reef/ui/about/AboutScreen.kt` — 移除捐赠按钮
+- `Reef/src/main/java/dev/pranav/reef/util/ReefWorker.kt` — 通知加跳转按钮
+- `Reef/src/main/AndroidManifest.xml` — KeepAliveService 注册
+- `Reef/src/main/java/dev/pranav/reef/screens/CreateRoutineScreen.kt` — loadAccessibleApps 修复
+- `Reef/src/main/res/values/strings.xml` + `values-zh-rCN/strings.xml` — 新字符串
+
+### 2026-05-17: 密码保护功能 (App Lock)
 
 ### 2026-05-17: 密码保护功能 (App Lock)
 
