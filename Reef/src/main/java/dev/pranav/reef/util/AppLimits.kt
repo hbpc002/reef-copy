@@ -174,43 +174,45 @@ object AppLimits {
 
 
 object Whitelist {
+    private const val USER_EXCLUSIONS_KEY = "user_excluded_packages"
     private lateinit var sharedPreferences: SharedPreferences
 
     fun init(context: Context) {
         sharedPreferences = context.getSharedPreferences("whitelist", Context.MODE_PRIVATE)
 
-        if (sharedPreferences.all.isEmpty()) {
-            whitelistAll(allowedApps)
+        val exclusions = getUserExclusions()
 
-            // Whitelist all system apps by default
-            context.packageManager.getInstalledPackages(Process.myUserHandle().hashCode())
-                .forEach { pkgInfo ->
-                    if ((pkgInfo.applicationInfo!!.flags and android.content.pm.ApplicationInfo.FLAG_SYSTEM) != 0) {
-                        whitelist(pkgInfo.packageName)
-                    }
+        // Whitelist all system apps by default (every init, respects exclusions)
+        context.packageManager.getInstalledPackages(Process.myUserHandle().hashCode())
+            .forEach { pkgInfo ->
+                val pkg = pkgInfo.applicationInfo?.packageName ?: return@forEach
+                if ((pkgInfo.applicationInfo!!.flags and android.content.pm.ApplicationInfo.FLAG_SYSTEM) != 0
+                    && pkg !in exclusions
+                ) {
+                    whitelistInternal(pkg)
                 }
-        }
+            }
 
         // Whitelist all installed input methods (keyboards)
         val inputMethodManager =
             context.getSystemService(Context.INPUT_METHOD_SERVICE) as android.view.inputmethod.InputMethodManager
         val inputMethods = inputMethodManager.enabledInputMethodList
         inputMethods.forEach { imi ->
-            whitelist(imi.packageName)
+            if (imi.packageName !in exclusions) whitelistInternal(imi.packageName)
         }
 
         // Whitelist the default SMS app
         val defaultSmsPackage = android.provider.Telephony.Sms.getDefaultSmsPackage(context)
-        if (defaultSmsPackage != null) {
-            whitelist(defaultSmsPackage)
+        if (defaultSmsPackage != null && defaultSmsPackage !in exclusions) {
+            whitelistInternal(defaultSmsPackage)
         }
 
         // Whitelist the default Phone app
         val telecomManager =
             context.getSystemService(Context.TELECOM_SERVICE) as android.telecom.TelecomManager
         val defaultPhonePackage = telecomManager.defaultDialerPackage
-        if (defaultPhonePackage != null) {
-            whitelist(defaultPhonePackage)
+        if (defaultPhonePackage != null && defaultPhonePackage !in exclusions) {
+            whitelistInternal(defaultPhonePackage)
         }
 
         // Whitelist the default assistant app
@@ -219,8 +221,8 @@ object Whitelist {
         }
         val resolveInfoAssist = context.packageManager.resolveActivity(intentAssist, 0)
         val defaultAssistPackage = resolveInfoAssist?.activityInfo?.packageName
-        if (defaultAssistPackage != null) {
-            whitelist(defaultAssistPackage)
+        if (defaultAssistPackage != null && defaultAssistPackage !in exclusions) {
+            whitelistInternal(defaultAssistPackage)
         }
 
         // Whitelist the default launcher
@@ -230,8 +232,8 @@ object Whitelist {
         }
         val resolveInfo = context.packageManager.resolveActivity(intent, 0)
         val defaultLauncherPackage = resolveInfo?.activityInfo?.packageName
-        if (defaultLauncherPackage != null) {
-            whitelist(defaultLauncherPackage)
+        if (defaultLauncherPackage != null && defaultLauncherPackage !in exclusions) {
+            whitelistInternal(defaultLauncherPackage)
         }
 
         // Whitelist apps with SYSTEM_ALERT_WINDOW permission
@@ -239,8 +241,54 @@ object Whitelist {
             arrayOf(android.Manifest.permission.SYSTEM_ALERT_WINDOW),
             0
         ).forEach { pkg ->
-            whitelist(pkg.packageName)
+            if (pkg.packageName !in exclusions) whitelistInternal(pkg.packageName)
         }
+
+        // Whitelist all enabled accessibility services
+        val enabledAccessibilityServices = android.provider.Settings.Secure.getString(
+            context.contentResolver,
+            android.provider.Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
+        )
+        if (enabledAccessibilityServices != null) {
+            enabledAccessibilityServices.split(':').forEach { component ->
+                val idx = component.indexOf('/')
+                if (idx > 0) {
+                    val accPkg = component.substring(0, idx)
+                    if (accPkg !in exclusions) whitelistInternal(accPkg)
+                }
+            }
+        }
+
+        // Whitelist all enabled notification listener services
+        val enabledNotificationListeners = android.provider.Settings.Secure.getString(
+            context.contentResolver,
+            "enabled_notification_listeners"
+        )
+        if (enabledNotificationListeners != null) {
+            enabledNotificationListeners.split(':').forEach { component ->
+                val idx = component.indexOf('/')
+                if (idx > 0) {
+                    val nlPkg = component.substring(0, idx)
+                    if (nlPkg !in exclusions) whitelistInternal(nlPkg)
+                }
+            }
+        }
+    }
+
+    private fun getUserExclusions(): Set<String> {
+        val raw = sharedPreferences.getString(USER_EXCLUSIONS_KEY, null) ?: return emptySet()
+        return try {
+            org.json.JSONArray(raw).let { arr ->
+                (0 until arr.length()).map { arr.getString(it) }.toSet()
+            }
+        } catch (_: Exception) {
+            emptySet()
+        }
+    }
+
+    private fun saveUserExclusions(exclusions: Set<String>) {
+        val json = org.json.JSONArray(exclusions.toList()).toString()
+        sharedPreferences.edit { putString(USER_EXCLUSIONS_KEY, json) }
     }
 
     fun isWhitelisted(packageName: String): Boolean {
@@ -248,15 +296,22 @@ object Whitelist {
     }
 
     fun whitelist(packageName: String) {
-        sharedPreferences.edit { putBoolean(packageName, true) }
+        whitelistInternal(packageName)
+        val exclusions = getUserExclusions().toMutableSet()
+        if (exclusions.remove(packageName)) {
+            saveUserExclusions(exclusions)
+        }
     }
 
-    fun whitelistAll(set: Set<String>) {
-        set.forEach { whitelist(it) }
+    private fun whitelistInternal(packageName: String) {
+        sharedPreferences.edit { putBoolean(packageName, true) }
     }
 
     fun unwhitelist(packageName: String) {
         sharedPreferences.edit { putBoolean(packageName, false) }
+        val exclusions = getUserExclusions().toMutableSet()
+        exclusions.add(packageName)
+        saveUserExclusions(exclusions)
     }
 
     fun getWhitelistedLaunchableCount(launcherApps: android.content.pm.LauncherApps): Int {
@@ -268,49 +323,4 @@ object Whitelist {
             isWhitelisted == true && launchablePackages.contains(pkg)
         }
     }
-
-    val allowedApps = hashSetOf(
-        "dev.pranav.reef",
-        "dev.pranav.applock",
-
-        "com.google.android.deskclock",
-        "com.google.android.calendar",
-        "com.google.android.keep",
-        "com.google.android.contacts",
-
-        "com.google.android.apps.docs",
-        "com.google.android.apps.drive",
-        "com.google.android.apps.sheets",
-        "com.google.android.apps.slides",
-        "com.google.android.apps.maps",
-        "com.google.android.apps.photos",
-        "com.google.android.apps.photosgo",
-        "com.google.android.apps.authenticator2",
-        "com.google.android.apps.paidtasks",
-        "com.google.android.apps.docs.editor.docs",
-        "com.google.android.apps.docs.editor.sheets",
-        "com.google.android.apps.classroom",
-        "com.google.android.apps.giant",
-        "com.google.android.apps.tachyon",
-
-        "app.revanced.android.gms", // MicroG / ReVanced GMS
-        "net.osmand",
-        "com.fsck.k9",
-        "bin.mt.plus.canary",
-        "com.sadellie.calculator",
-        "com.lineageos.aperture.dev",
-        "com.lineageos.aperture",
-        "com.shazam.android",
-        "com.synapsetech.compass",
-        "me.jmh.authenticatorpro",
-        "md.obsidian",
-
-        "com.slack",
-        "com.google.android.gm",
-        "com.google.android.apps.meet",
-        "com.microsoft.teams",
-        "com.paypal.android.p2pmobile",
-        "com.google.android.apps.nbu.paisa.user",
-        "com.fampay.in",
-    )
 }
