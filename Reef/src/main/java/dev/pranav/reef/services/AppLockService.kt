@@ -7,31 +7,44 @@ import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
 import android.content.Intent
-import android.os.Handler
-import android.os.Looper
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import dev.pranav.reef.MainActivity
 import dev.pranav.reef.R
 import dev.pranav.reef.accessibility.UsageTracker
+import dev.pranav.reef.util.AndroidUtilities.getAppName
 import dev.pranav.reef.util.AppLimits
+import dev.pranav.reef.util.CyclicConfig
 import dev.pranav.reef.util.NotificationHelper
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 class AppLockService : Service() {
 
-    private val handler = Handler(Looper.getMainLooper())
-    private val checkRunnable = object : Runnable {
-        override fun run() {
-            checkAppUsageAndLock()
-            handler.postDelayed(this, CHECK_INTERVAL_MS)
-        }
-    }
+    private val serviceScope = CoroutineScope(Dispatchers.Default)
+    private var checkJob: Job? = null
 
     override fun onCreate() {
         super.onCreate()
         createNotificationChannel()
         startForeground(NOTIFICATION_ID, createNotification())
-        handler.post(checkRunnable)
+        startPeriodicCheck()
+    }
+
+    private fun startPeriodicCheck() {
+        checkJob = serviceScope.launch {
+            try {
+                while (true) {
+                    checkAppUsageAndLock()
+                    delay(CHECK_INTERVAL_MS)
+                }
+            } catch (_: kotlinx.coroutines.CancellationException) {
+                // 协程被取消
+            }
+        }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -42,7 +55,7 @@ class AppLockService : Service() {
 
     override fun onDestroy() {
         super.onDestroy()
-        handler.removeCallbacks(checkRunnable)
+        checkJob?.cancel()
     }
 
     private fun checkAppUsageAndLock() {
@@ -50,6 +63,12 @@ class AppLockService : Service() {
         if (currentApp == null || currentApp == packageName) return
 
         if (AppLimits.isWhitelisted(currentApp)) return
+
+        val cyclic = AppLimits.getCyclicConfig(currentApp)
+        if (cyclic != null) {
+            checkCyclicLock(currentApp, cyclic)
+            return
+        }
 
         val blockReason = UsageTracker.checkBlockReason(this, currentApp)
         if (blockReason != UsageTracker.BlockReason.NONE) return
@@ -75,12 +94,46 @@ class AppLockService : Service() {
         }
     }
 
-    private fun showLockedNotification(pkg: String) {
-        val appName = try {
-            packageManager.getApplicationLabel(packageManager.getApplicationInfo(pkg, 0))
-        } catch (_: Exception) {
-            pkg
+    private fun checkCyclicLock(pkg: String, cyclic: CyclicConfig) {
+        val now = System.currentTimeMillis()
+
+        if (AppLimits.isInCyclicLockPhase(pkg)) {
+            if (AppLimits.getCyclicLockUntilMs(pkg) <= now) {
+                val todayUsage = UsageTracker.getTodayUsage(this, pkg)
+                AppLimits.setCyclicCycleStartUsage(pkg, todayUsage)
+                Log.d(TAG, "Cyclic lock expired for $pkg, restarting use cycle")
+            }
+            return
         }
+
+        val todayUsage = UsageTracker.getTodayUsage(this, pkg)
+        val cycleStartUsage = AppLimits.getCyclicCycleStartUsage(pkg)
+        val cycleUsage = todayUsage - cycleStartUsage
+        val cycleUsageLimit = cyclic.usageMinutes * 60_000L
+
+        if (cycleUsage >= cycleUsageLimit) {
+            val lockDuration = cyclic.lockMinutes * 60_000L
+            AppLimits.setCyclicLockUntil(pkg, now + lockDuration)
+            Log.d(TAG, "Cyclic lock activated for $pkg: ${cyclic.lockMinutes}min lock after ${cyclic.usageMinutes}min use")
+            showCyclicLockedNotification(pkg, cyclic.lockMinutes)
+        }
+    }
+
+    private fun showCyclicLockedNotification(pkg: String, lockMinutes: Int) {
+        val appName = getAppName(this, pkg)
+        val notification = NotificationCompat.Builder(this, CHANNEL_ID)
+            .setContentTitle(getString(R.string.app_blocked))
+            .setContentText(getString(R.string.app_locked_for_minutes, appName, lockMinutes))
+            .setSmallIcon(R.drawable.ic_launcher_foreground)
+            .setAutoCancel(true)
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .build()
+        val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        manager.notify(pkg.hashCode(), notification)
+    }
+
+    private fun showLockedNotification(pkg: String) {
+        val appName = getAppName(this, pkg)
 
         val notification = NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle(getString(R.string.app_locked))

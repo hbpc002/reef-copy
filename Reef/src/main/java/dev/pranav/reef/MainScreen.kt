@@ -58,7 +58,6 @@ fun HomeContent(
     val context = LocalContext.current
     val timerState by TimerStateManager.state.collectAsState()
     var showDiscordDialog by remember { mutableStateOf(false) }
-    var showDonateDialog by remember { mutableStateOf(false) }
 
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior(
         rememberTopAppBarState()
@@ -71,8 +70,6 @@ fun HomeContent(
             delay(500)
             if (!prefs.getBoolean("discord_shown", false)) {
                 showDiscordDialog = true
-            } else if (prefs.getBoolean("show_dialog", false)) {
-                showDonateDialog = true
             }
         }
     }
@@ -193,24 +190,6 @@ fun HomeContent(
             )
         }
 
-        if (showDonateDialog) {
-            DonateDialog(
-                onDismiss = {
-                    prefs.edit { putBoolean("show_dialog", false) }
-                    showDonateDialog = false
-                },
-                onSupport = {
-                    prefs.edit { putBoolean("show_dialog", false) }
-                    context.startActivity(
-                        Intent(
-                            Intent.ACTION_VIEW,
-                            "https://PranavPurwar.github.io/donate.html".toUri()
-                        )
-                    )
-                    showDonateDialog = false
-                }
-            )
-        }
     }
 }
 
@@ -704,59 +683,6 @@ private fun CommunityDialog(
                 )
                 Spacer(Modifier.width(8.dp))
                 Text(stringResource(R.string.join_discord))
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text(stringResource(R.string.maybe_later))
-            }
-        }
-    )
-}
-
-@Composable
-private fun DonateDialog(
-    onDismiss: () -> Unit,
-    onSupport: () -> Unit
-) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        icon = {
-            Icon(
-                Icons.Rounded.Favorite,
-                contentDescription = null,
-                modifier = Modifier.size(32.dp),
-                tint = MaterialTheme.colorScheme.error
-            )
-        },
-        title = {
-            Text(
-                text = stringResource(R.string.support_development),
-                style = MaterialTheme.typography.headlineSmall
-            )
-        },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(
-                    text = stringResource(R.string.support_development_desc),
-                    style = MaterialTheme.typography.bodyMedium
-                )
-                Text(
-                    text = stringResource(R.string.any_amount_helps),
-                    style = MaterialTheme.typography.bodyMedium,
-                    fontWeight = FontWeight.SemiBold
-                )
-            }
-        },
-        confirmButton = {
-            Button(onClick = onSupport) {
-                Icon(
-                    Icons.Rounded.VolunteerActivism,
-                    contentDescription = null,
-                    modifier = Modifier.size(18.dp)
-                )
-                Spacer(Modifier.width(8.dp))
-                Text(stringResource(R.string.support_development))
             }
         },
         dismissButton = {

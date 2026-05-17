@@ -3,8 +3,10 @@ package dev.pranav.reef.util
 import android.Manifest
 import android.app.NotificationChannel
 import android.app.NotificationManager
+import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
+import android.provider.Settings
 import androidx.annotation.RequiresPermission
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
@@ -23,13 +25,7 @@ class ReefWorker(context: Context, params: WorkerParameters): Worker(context, pa
         val isFocusModeActive = prefs.getBoolean("focus_mode", false)
 
         if (!safeContext.isAccessibilityServiceEnabledForBlocker()) {
-            sendInstantNotification(
-                safeContext,
-                channelId = "reef_alerts",
-                channelName = "Reef Alerts",
-                title = "Reef Accessibility Disabled",
-                message = "Please re-enable Reef's Accessibility Service for proper functionality."
-            )
+            sendAccessibilityAlert(safeContext)
             return Result.success()
         }
 
@@ -48,6 +44,28 @@ class ReefWorker(context: Context, params: WorkerParameters): Worker(context, pa
         return Result.success()
     }
 
+    private fun sendAccessibilityAlert(context: Context) {
+        val settingsIntent = Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS).apply {
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+        val pendingIntent = PendingIntent.getActivity(
+            context, 0, settingsIntent,
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+        )
+
+        sendInstantNotification(
+            context = context,
+            channelId = "reef_alerts",
+            channelName = "Reef Alerts",
+            notificationId = ACCESSIBILITY_ALERT_ID,
+            title = "Reef 无障碍服务已关闭",
+            message = "系统可能已自动关闭 Reef 的无障碍权限，点击重新开启",
+            action = NotificationCompat.Action.Builder(
+                0, "重新开启", pendingIntent
+            ).build()
+        )
+    }
+
     @RequiresPermission(Manifest.permission.POST_NOTIFICATIONS)
     fun sendInstantNotification(
         context: Context,
@@ -55,7 +73,8 @@ class ReefWorker(context: Context, params: WorkerParameters): Worker(context, pa
         channelName: String,
         title: String,
         message: String,
-        notificationId: Int = System.currentTimeMillis().toInt()
+        notificationId: Int = System.currentTimeMillis().toInt(),
+        action: NotificationCompat.Action? = null
     ) {
         val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
 
@@ -72,9 +91,17 @@ class ReefWorker(context: Context, params: WorkerParameters): Worker(context, pa
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setAutoCancel(true)
 
+        if (action != null) {
+            builder.addAction(action)
+        }
+
         try {
             NotificationManagerCompat.from(context).notify(notificationId, builder.build())
         } catch (_: SecurityException) {
         }
+    }
+
+    companion object {
+        private const val ACCESSIBILITY_ALERT_ID = 10001
     }
 }

@@ -13,6 +13,7 @@ import dev.pranav.reef.R
 import dev.pranav.reef.scheduleWatcher
 import dev.pranav.reef.services.routines.RoutineSessionManager
 import dev.pranav.reef.util.*
+import dev.pranav.reef.util.AndroidUtilities.getAppName
 import dev.pranav.reef.util.NotificationHelper.BLOCKER_GROUP_KEY
 import dev.pranav.reef.util.NotificationHelper.createNotificationChannel
 import dev.pranav.reef.util.NotificationHelper.syncRoutineNotification
@@ -68,10 +69,14 @@ class BlockerService: AccessibilityService() {
         val blockReason = UsageTracker.checkBlockReason(this, pkg)
         if (blockReason == UsageTracker.BlockReason.NONE) {
             val autoLockReason = UsageTracker.checkAutoLockReason(this, pkg)
-            if (autoLockReason == UsageTracker.BlockReason.DAILY_LIMIT || autoLockReason == UsageTracker.BlockReason.AUTO_LOCK) {
-                Log.d("BlockerService", "Blocking $pkg due to auto lock")
+            if (autoLockReason == UsageTracker.BlockReason.DAILY_LIMIT || autoLockReason == UsageTracker.BlockReason.AUTO_LOCK || autoLockReason == UsageTracker.BlockReason.CYCLIC_LOCK) {
+                Log.d("BlockerService", "Blocking $pkg due to $autoLockReason")
                 performGlobalAction(GLOBAL_ACTION_HOME)
-                showAutoLockNotification(pkg)
+                if (autoLockReason == UsageTracker.BlockReason.CYCLIC_LOCK) {
+                    showCyclicLockNotification(pkg)
+                } else {
+                    showAutoLockNotification(pkg)
+                }
                 return
             }
             return
@@ -91,11 +96,7 @@ class BlockerService: AccessibilityService() {
             return
         }
 
-        val appName = try {
-            packageManager.getApplicationLabel(packageManager.getApplicationInfo(pkg, 0))
-        } catch (_: PackageManager.NameNotFoundException) {
-            pkg
-        }
+        val appName = getAppName(this, pkg)
 
         val contentText = when (reason) {
             UsageTracker.BlockReason.ROUTINE_LIMIT -> getString(
@@ -132,11 +133,7 @@ class BlockerService: AccessibilityService() {
         if (NotificationManagerCompat.from(this).areNotificationsEnabled().not()) return
         if (!prefs.getBoolean("focus_reminders", true)) return
 
-        val appName = try {
-            packageManager.getApplicationLabel(packageManager.getApplicationInfo(pkg, 0))
-        } catch (_: PackageManager.NameNotFoundException) {
-            pkg
-        }
+        val appName = getAppName(this, pkg)
 
         val notification = NotificationCompat.Builder(this, BLOCKER_CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_launcher_foreground)
@@ -150,15 +147,32 @@ class BlockerService: AccessibilityService() {
     }
 
     @SuppressLint("MissingPermission")
+    private fun showCyclicLockNotification(pkg: String) {
+        val manager = NotificationManagerCompat.from(this)
+        if (manager.areNotificationsEnabled().not()) return
+
+        val appName = getAppName(this, pkg)
+        val cyclic = AppLimits.getCyclicConfig(pkg)
+        val lockMinutes = cyclic?.lockMinutes ?: 5
+
+        val notification = NotificationCompat.Builder(this, BLOCKER_CHANNEL_ID)
+            .setContentTitle(getString(R.string.app_blocked))
+            .setContentText(getString(R.string.cyclic_lock_message, appName, lockMinutes))
+            .setSmallIcon(R.drawable.ic_launcher_foreground)
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setGroup(BLOCKER_GROUP_KEY)
+            .setAutoCancel(true)
+            .build()
+
+        manager.notify(pkg.hashCode(), notification)
+    }
+
+    @SuppressLint("MissingPermission")
     private fun showAutoLockNotification(pkg: String) {
         val manager = NotificationManagerCompat.from(this)
         if (manager.areNotificationsEnabled().not()) return
 
-        val appName = try {
-            packageManager.getApplicationLabel(packageManager.getApplicationInfo(pkg, 0))
-        } catch (_: PackageManager.NameNotFoundException) {
-            pkg
-        }
+        val appName = getAppName(this, pkg)
 
         val lockDurationMin = AppLimits.getLockDurationMs(pkg) / 60000
 

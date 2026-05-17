@@ -14,7 +14,8 @@ object UsageTracker {
         NONE,
         DAILY_LIMIT,
         ROUTINE_LIMIT,
-        AUTO_LOCK
+        AUTO_LOCK,
+        CYCLIC_LOCK
     }
 
     fun shouldBlock(context: Context, packageName: String): Boolean {
@@ -90,31 +91,42 @@ object UsageTracker {
     }
 
     private fun shouldSkipPackage(context: Context, packageName: String): Boolean {
-        if (systemAppCache.containsKey(packageName)) {
-            return systemAppCache[packageName]!!
-        }
+        return systemAppCache.getOrPut(packageName) {
+            try {
+                val pm = context.packageManager
+                val info = pm.getApplicationInfo(packageName, 0)
+                val isSystem = (info.flags and android.content.pm.ApplicationInfo.FLAG_SYSTEM) != 0
 
-        val shouldSkip = try {
-            val pm = context.packageManager
-            val info = pm.getApplicationInfo(packageName, 0)
-            val isSystem = (info.flags and android.content.pm.ApplicationInfo.FLAG_SYSTEM) != 0
-
-            if (isSystem) {
-                pm.getLaunchIntentForPackage(packageName) == null
-            } else {
+                if (isSystem) {
+                    pm.getLaunchIntentForPackage(packageName) == null
+                } else {
+                    false
+                }
+            } catch (_: Exception) {
                 false
             }
-        } catch (_: Exception) {
-            false
         }
-
-        systemAppCache[packageName] = shouldSkip
-        return shouldSkip
     }
 
     fun checkAutoLockReason(context: Context, packageName: String): BlockReason {
         if (shouldSkipPackage(context, packageName)) return BlockReason.NONE
         if (Whitelist.isWhitelisted(packageName)) return BlockReason.NONE
+
+        val cyclic = AppLimits.getCyclicConfig(packageName)
+        if (cyclic != null) {
+            val now = System.currentTimeMillis()
+            if (AppLimits.isInCyclicLockPhase(packageName)) {
+                return BlockReason.CYCLIC_LOCK
+            }
+            val usm = context.getSystemService(Context.USAGE_STATS_SERVICE) as UsageStatsManager
+            val dailyUsage = getDailyUsage(packageName, usm)
+            val cycleStartUsage = AppLimits.getCyclicCycleStartUsage(packageName)
+            val cycleUsage = dailyUsage - cycleStartUsage
+            if (cycleUsage >= cyclic.usageMinutes * 60_000L) {
+                return BlockReason.DAILY_LIMIT
+            }
+            return BlockReason.NONE
+        }
 
         if (!AppLimits.hasLimit(packageName)) return BlockReason.NONE
 

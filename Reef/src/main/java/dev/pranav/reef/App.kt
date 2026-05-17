@@ -11,6 +11,7 @@ import com.google.android.material.color.DynamicColors
 import dev.pranav.reef.accessibility.BlockerService
 import dev.pranav.reef.receivers.DailySummaryScheduler
 import dev.pranav.reef.services.AppLockService
+import dev.pranav.reef.services.KeepAliveService
 import dev.pranav.reef.services.routines.RoutineAlarmScheduler
 import dev.pranav.reef.services.routines.RoutineSessionManager
 import dev.pranav.reef.util.*
@@ -47,6 +48,8 @@ class App: Application(), Configuration.Provider {
         if (prefs.getBoolean("auto_lock_enabled", false)) {
             AppLockService.start(this)
         }
+
+        KeepAliveService.start(this)
 
         setupCrashHandler()
     }

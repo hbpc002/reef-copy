@@ -12,6 +12,13 @@ import java.util.Calendar
 object ScreenUsageHelper {
 
     private const val TAG = "ScreenUsageHelper"
+    private const val CACHE_VALIDITY_MS = 10000L // 10秒缓存
+
+    private data class CacheKey(val start: Long, val end: Long, val targetPackage: String?)
+    private data class CacheEntry(val result: Map<String, Long>, val timestamp: Long)
+
+    private var cachedResult: CacheEntry? = null
+    private var lastQueryKey: CacheKey? = null
 
     fun calculateUsage(
         @Suppress("UNUSED_PARAMETER") context: Context,
@@ -29,16 +36,33 @@ object ScreenUsageHelper {
         end: Long,
         targetPackage: String? = null
     ): Map<String, Long> {
+        val key = CacheKey(start, end, targetPackage)
+        val now = System.currentTimeMillis()
+
+        // 检查缓存
+        cachedResult?.let { cache ->
+            if (lastQueryKey == key && now - cache.timestamp < CACHE_VALIDITY_MS) {
+                Log.d(TAG, "Returning cached usage data")
+                return cache.result
+            }
+        }
+
         try {
             val eventBasedUsage =
                 calculateUsageFromEvents(usageStatsManager, start, end, targetPackage)
 
-            if (eventBasedUsage.isEmpty()) {
+            val result = if (eventBasedUsage.isEmpty()) {
                 Log.w(TAG, "Event-based tracking returned no data, using UsageStats fallback")
-                return calculateUsageFromStats(usageStatsManager, start, end, targetPackage)
+                calculateUsageFromStats(usageStatsManager, start, end, targetPackage)
+            } else {
+                eventBasedUsage
             }
 
-            return eventBasedUsage
+            // 更新缓存
+            cachedResult = CacheEntry(result, now)
+            lastQueryKey = key
+
+            return result
         } catch (e: Exception) {
             Log.e(TAG, "Error fetching usage", e)
             return calculateUsageFromStats(usageStatsManager, start, end, targetPackage)

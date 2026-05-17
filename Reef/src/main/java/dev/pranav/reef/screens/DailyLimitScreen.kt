@@ -29,6 +29,7 @@ import com.patrykandpatrick.vico.compose.cartesian.data.CartesianChartModelProdu
 import com.patrykandpatrick.vico.compose.cartesian.data.CartesianValueFormatter
 import com.patrykandpatrick.vico.compose.cartesian.data.columnSeries
 import dev.pranav.reef.R
+import dev.pranav.reef.util.CyclicConfig
 import org.nsh07.pomodoro.ui.statsScreen.TimeColumnChart
 import java.time.Instant
 import java.time.ZoneId
@@ -43,8 +44,10 @@ fun DailyLimitScreen(
     packageName: String,
     existingLimitMinutes: Int,
     existingLockDurationMinutes: Int,
+    existingCyclicConfig: CyclicConfig?,
     dailyData: List<HourlyUsageData>,
     onSave: (limitMinutes: Int, lockDurationMinutes: Int) -> Unit,
+    onSaveCyclic: ((CyclicConfig) -> Unit)? = null,
     onRemove: () -> Unit,
     onBackPressed: () -> Unit,
     onWeekChange: (Int) -> Unit = {},
@@ -76,8 +79,10 @@ fun DailyLimitScreen(
             packageName = packageName,
             existingLimitMinutes = existingLimitMinutes,
             existingLockDurationMinutes = existingLockDurationMinutes,
+            existingCyclicConfig = existingCyclicConfig,
             dailyData = dailyData,
             onSave = onSave,
+            onSaveCyclic = onSaveCyclic,
             onRemove = onRemove,
             weekOffset = weekOffset,
             onWeekChange = onWeekChange,
@@ -103,8 +108,10 @@ private fun DailyLimitContent(
     packageName: String,
     existingLimitMinutes: Int,
     existingLockDurationMinutes: Int,
+    existingCyclicConfig: CyclicConfig?,
     dailyData: List<HourlyUsageData>,
     onSave: (limitMinutes: Int, lockDurationMinutes: Int) -> Unit,
+    onSaveCyclic: ((CyclicConfig) -> Unit)?,
     onRemove: () -> Unit,
     weekOffset: Int,
     onWeekChange: (Int) -> Unit,
@@ -114,6 +121,9 @@ private fun DailyLimitContent(
     var hours by remember { mutableIntStateOf(existingLimitMinutes / 60) }
     var minutes by remember { mutableIntStateOf(existingLimitMinutes % 60) }
     var lockDuration by remember { mutableIntStateOf(existingLockDurationMinutes) }
+    var isCyclic by remember { mutableStateOf(existingCyclicConfig != null) }
+    var cyclicUsage by remember { mutableIntStateOf(existingCyclicConfig?.usageMinutes ?: 15) }
+    var cyclicLock by remember { mutableIntStateOf(existingCyclicConfig?.lockMinutes ?: 5) }
 
     val totalMinutes = hours * 60 + minutes
     val averageUsage = dailyData.map { it.usageMinutes }.average().takeIf { !it.isNaN() } ?: 0.0
@@ -246,144 +256,44 @@ private fun DailyLimitContent(
             }
         }
 
-        Spacer(modifier = Modifier.height(24.dp))
+        Spacer(modifier = Modifier.height(16.dp))
 
-        Card(
+        Row(
             modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(20.dp),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)
+            horizontalArrangement = Arrangement.Center
         ) {
-            Column(
-                modifier = Modifier.padding(20.dp),
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                Text(
-                    text = stringResource(R.string.set_daily_usage_limit),
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.SemiBold
-                )
-
-                Spacer(modifier = Modifier.height(20.dp))
-
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.Center,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        FilledTonalIconButton(
-                            onClick = { if (hours < 12) hours++ },
-                            modifier = Modifier.size(44.dp),
-                            shapes = IconButtonDefaults.shapes(
-                                shape = IconButtonDefaults.extraLargeSquareShape,
-                                pressedShape = IconButtonDefaults.largePressedShape
-                            )
-                        ) {
-                            Icon(Icons.Rounded.Add, null)
-                        }
-
-                        Text(
-                            text = hours.toString().padStart(2, '0'),
-                            fontSize = 48.sp,
-                            fontWeight = FontWeight.Bold
-                        )
-
-                        FilledTonalIconButton(
-                            onClick = { if (hours > 0) hours-- },
-                            modifier = Modifier.size(44.dp),
-                            shapes = IconButtonDefaults.shapes(
-                                shape = IconButtonDefaults.extraLargeSquareShape,
-                                pressedShape = IconButtonDefaults.largePressedShape
-                            )
-                        ) {
-                            Icon(Icons.Rounded.Remove, null)
-                        }
-
-                        Spacer(Modifier.height(4.dp))
-                        Text(
-                            text = stringResource(R.string.hours),
-                            style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-
-                    Text(
-                        text = ":",
-                        fontSize = 48.sp,
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier.padding(horizontal = 16.dp)
-                    )
-
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        FilledTonalIconButton(
-                            onClick = {
-                                if (minutes < 59) minutes++ else if (hours < 12) {
-                                    hours++; minutes = 0
-                                }
-                            },
-                            modifier = Modifier.size(44.dp),
-                            shapes = IconButtonDefaults.shapes(
-                                shape = IconButtonDefaults.extraLargeSquareShape,
-                                pressedShape = IconButtonDefaults.largePressedShape
-                            )
-                        ) {
-                            Icon(Icons.Rounded.Add, null)
-                        }
-
-                        Text(
-                            text = minutes.toString().padStart(2, '0'),
-                            fontSize = 48.sp,
-                            fontWeight = FontWeight.Bold
-                        )
-
-                        FilledTonalIconButton(
-                            onClick = {
-                                if (minutes > 0) minutes-- else if (hours > 0) {
-                                    hours--; minutes = 59
-                                }
-                            },
-                            modifier = Modifier.size(44.dp),
-                            shapes = IconButtonDefaults.shapes(
-                                shape = IconButtonDefaults.extraLargeSquareShape,
-                                pressedShape = IconButtonDefaults.largePressedShape
-                            )
-                        ) {
-                            Icon(Icons.Rounded.Remove, null)
-                        }
-
-                        Spacer(Modifier.height(4.dp))
-                        Text(
-                            text = stringResource(R.string.minutes),
-                            style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                }
-
-                Spacer(Modifier.height(16.dp))
-
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally)
-                ) {
-                    SuggestionChip(
-                        onClick = { hours = 0; minutes = 30 },
-                        label = { Text("30m") }
-                    )
-                    SuggestionChip(
-                        onClick = { hours = 1; minutes = 0 },
-                        label = { Text("1h") }
-                    )
-                    SuggestionChip(
-                        onClick = { hours = 2; minutes = 0 },
-                        label = { Text("2h") }
-                    )
-                }
-            }
+            FilterChip(
+                selected = !isCyclic,
+                onClick = { isCyclic = false },
+                label = { Text("每日限额") }
+            )
+            Spacer(Modifier.width(12.dp))
+            FilterChip(
+                selected = isCyclic,
+                onClick = { isCyclic = true },
+                label = { Text(stringResource(R.string.cyclic_mode)) }
+            )
         }
 
-        Spacer(modifier = Modifier.height(24.dp))
+        Spacer(modifier = Modifier.height(16.dp))
 
-        if (totalMinutes > 0) {
+        if (isCyclic) {
+            CyclicConfigSection(
+                usageMinutes = cyclicUsage,
+                lockMinutes = cyclicLock,
+                onUsageChange = { cyclicUsage = it.coerceIn(1, 480) },
+                onLockChange = { cyclicLock = it.coerceIn(1, 480) }
+            )
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            Button(
+                onClick = { onSaveCyclic?.invoke(CyclicConfig(cyclicUsage, cyclicLock)) },
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(stringResource(R.string.save_routine))
+            }
+        } else {
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(20.dp),
@@ -394,41 +304,146 @@ private fun DailyLimitContent(
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
                     Text(
-                        text = "Lock Duration (after limit exceeded)",
+                        text = stringResource(R.string.set_daily_usage_limit),
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.SemiBold
                     )
 
-                    Spacer(modifier = Modifier.height(12.dp))
+                    Spacer(modifier = Modifier.height(20.dp))
 
                     Row(
-                        horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.Center,
                         modifier = Modifier.fillMaxWidth()
                     ) {
-                        val lockOptions = listOf(0 to "None", 15 to "15m", 30 to "30m", 60 to "1h", 120 to "2h")
-                        lockOptions.forEach { (value, label) ->
-                            FilterChip(
-                                selected = lockDuration == value,
-                                onClick = { lockDuration = value },
-                                label = { Text(label) }
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            FilledTonalIconButton(
+                                onClick = { if (hours < 12) hours++ },
+                                modifier = Modifier.size(44.dp),
+                                shapes = IconButtonDefaults.shapes(
+                                    shape = IconButtonDefaults.extraLargeSquareShape,
+                                    pressedShape = IconButtonDefaults.largePressedShape
+                                )
+                            ) {
+                                Icon(Icons.Rounded.Add, null)
+                            }
+
+                            Text(
+                                text = hours.toString().padStart(2, '0'),
+                                fontSize = 48.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+
+                            FilledTonalIconButton(
+                                onClick = { if (hours > 0) hours-- },
+                                modifier = Modifier.size(44.dp),
+                                shapes = IconButtonDefaults.shapes(
+                                    shape = IconButtonDefaults.extraLargeSquareShape,
+                                    pressedShape = IconButtonDefaults.largePressedShape
+                                )
+                            ) {
+                                Icon(Icons.Rounded.Remove, null)
+                            }
+
+                            Spacer(Modifier.height(4.dp))
+                            Text(
+                                text = stringResource(R.string.hours),
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
+
+                        Text(
+                            text = ":",
+                            fontSize = 48.sp,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(horizontal = 16.dp)
+                        )
+
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            FilledTonalIconButton(
+                                onClick = {
+                                    if (minutes < 59) minutes++ else if (hours < 12) {
+                                        hours++; minutes = 0
+                                    }
+                                },
+                                modifier = Modifier.size(44.dp),
+                                shapes = IconButtonDefaults.shapes(
+                                    shape = IconButtonDefaults.extraLargeSquareShape,
+                                    pressedShape = IconButtonDefaults.largePressedShape
+                                )
+                            ) {
+                                Icon(Icons.Rounded.Add, null)
+                            }
+
+                            Text(
+                                text = minutes.toString().padStart(2, '0'),
+                                fontSize = 48.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+
+                            FilledTonalIconButton(
+                                onClick = {
+                                    if (minutes > 0) minutes-- else if (hours > 0) {
+                                        hours--; minutes = 59
+                                    }
+                                },
+                                modifier = Modifier.size(44.dp),
+                                shapes = IconButtonDefaults.shapes(
+                                    shape = IconButtonDefaults.extraLargeSquareShape,
+                                    pressedShape = IconButtonDefaults.largePressedShape
+                                )
+                            ) {
+                                Icon(Icons.Rounded.Remove, null)
+                            }
+
+                            Spacer(Modifier.height(4.dp))
+                            Text(
+                                text = stringResource(R.string.minutes),
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+
+                    Spacer(Modifier.height(16.dp))
+
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally)
+                    ) {
+                        SuggestionChip(
+                            onClick = { hours = 0; minutes = 30 },
+                            label = { Text("30m") }
+                        )
+                        SuggestionChip(
+                            onClick = { hours = 1; minutes = 0 },
+                            label = { Text("1h") }
+                        )
+                        SuggestionChip(
+                            onClick = { hours = 2; minutes = 0 },
+                            label = { Text("2h") }
+                        )
                     }
                 }
             }
 
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(24.dp))
+
+            if (totalMinutes > 0) {
+                LockDurationSection(lockDuration = lockDuration, onLockDurationChange = { lockDuration = it })
+                Spacer(modifier = Modifier.height(16.dp))
+            }
+
+            Button(
+                onClick = { onSave(totalMinutes, lockDuration) },
+                modifier = Modifier.fillMaxWidth(),
+                enabled = totalMinutes > 0
+            ) {
+                Text(stringResource(R.string.save_routine))
+            }
         }
 
-        Button(
-            onClick = { onSave(totalMinutes, lockDuration) },
-            modifier = Modifier.fillMaxWidth(),
-            enabled = totalMinutes > 0
-        ) {
-            Text(stringResource(R.string.save_routine))
-        }
-
-        if (existingLimitMinutes > 0) {
+        if (existingLimitMinutes > 0 || existingCyclicConfig != null) {
             Spacer(modifier = Modifier.height(8.dp))
             OutlinedButton(
                 onClick = onRemove,
@@ -440,5 +455,131 @@ private fun DailyLimitContent(
         }
 
         Spacer(modifier = Modifier.height(32.dp))
+    }
+}
+
+@Composable
+private fun LockDurationSection(
+    lockDuration: Int,
+    onLockDurationChange: (Int) -> Unit
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)
+    ) {
+        Column(
+            modifier = Modifier.padding(20.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Text(
+                text = "Lock Duration (after limit exceeded)",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold
+            )
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            MinuteStepper(value = lockDuration, onValueChange = onLockDurationChange)
+        }
+    }
+}
+
+@Composable
+private fun CyclicConfigSection(
+    usageMinutes: Int,
+    lockMinutes: Int,
+    onUsageChange: (Int) -> Unit,
+    onLockChange: (Int) -> Unit
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)
+    ) {
+        Column(
+            modifier = Modifier.padding(20.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Text(
+                text = stringResource(R.string.cyclic_mode),
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold
+            )
+
+            Spacer(Modifier.height(20.dp))
+
+            Text(
+                text = stringResource(R.string.cyclic_usage_per_cycle),
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Spacer(Modifier.height(8.dp))
+            MinuteStepper(value = usageMinutes, onValueChange = onUsageChange)
+
+            Spacer(Modifier.height(20.dp))
+            HorizontalDivider()
+            Spacer(Modifier.height(20.dp))
+
+            Text(
+                text = stringResource(R.string.cyclic_lock_per_cycle),
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Spacer(Modifier.height(8.dp))
+            MinuteStepper(value = lockMinutes, onValueChange = onLockChange)
+        }
+    }
+}
+
+@Composable
+private fun MinuteStepper(
+    value: Int,
+    onValueChange: (Int) -> Unit
+) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.Center,
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        FilledTonalButton(
+            onClick = { onValueChange(value - 15) },
+            enabled = value > 1,
+            shape = RoundedCornerShape(12.dp)
+        ) { Text("−15") }
+        Spacer(Modifier.width(8.dp))
+        FilledTonalButton(
+            onClick = { onValueChange(value - 5) },
+            enabled = value > 1,
+            shape = RoundedCornerShape(12.dp)
+        ) { Text("−5") }
+        Spacer(Modifier.width(8.dp))
+        FilledTonalButton(
+            onClick = { onValueChange(value - 1) },
+            enabled = value > 1,
+            shape = RoundedCornerShape(12.dp)
+        ) { Text("−1") }
+
+        Text(
+            text = "$value min",
+            fontSize = 28.sp,
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier.padding(horizontal = 16.dp)
+        )
+
+        FilledTonalButton(
+            onClick = { onValueChange(value + 1) },
+            shape = RoundedCornerShape(12.dp)
+        ) { Text("+1") }
+        Spacer(Modifier.width(8.dp))
+        FilledTonalButton(
+            onClick = { onValueChange(value + 5) },
+            shape = RoundedCornerShape(12.dp)
+        ) { Text("+5") }
+        Spacer(Modifier.width(8.dp))
+        FilledTonalButton(
+            onClick = { onValueChange(value + 15) },
+            shape = RoundedCornerShape(12.dp)
+        ) { Text("+15") }
     }
 }

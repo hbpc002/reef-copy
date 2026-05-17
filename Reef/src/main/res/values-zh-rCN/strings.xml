@@ -215,6 +215,11 @@
     <string name="you_were_using">您刚才正在使用 %1$s</string>
     <string name="blocker_channel_name">内容屏蔽器</string>
     <string name="blocker_channel_description">显示屏幕使用时间提醒以及应用屏蔽通知。</string>
+    <string name="app_locked_for_minutes">%1$s 已被锁定 %2$d 分钟</string>
+    <string name="cyclic_lock_message">%1$s 冷却中，%2$d 分钟后可继续使用</string>
+    <string name="cyclic_mode">循环限制</string>
+    <string name="cyclic_usage_per_cycle">每次可用时长</string>
+    <string name="cyclic_lock_per_cycle">每次锁定时长</string>
     <string name="no_usage_data">暂无可用用量数据</string>
     <string name="routine_activated">专注计划已激活</string>
     <string name="routine_deactivated">专注计划已停用</string>

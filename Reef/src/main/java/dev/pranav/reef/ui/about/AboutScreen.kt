@@ -304,36 +304,6 @@ fun SupportCard() {
                 }
             }
 
-            Spacer(modifier = Modifier.height(20.dp))
-
-            Button(
-                onClick = {
-                    val intent = Intent(
-                        Intent.ACTION_VIEW,
-                        "https://PranavPurwar.github.io/donate.html".toUri()
-                    )
-                    context.startActivity(intent)
-                },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(52.dp),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = MaterialTheme.colorScheme.error
-                ),
-                shapes = ButtonDefaults.shapes()
-            ) {
-                Icon(
-                    Icons.Default.Favorite,
-                    contentDescription = null,
-                    modifier = Modifier.size(20.dp)
-                )
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(
-                    stringResource(R.string.donate),
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.SemiBold
-                )
-            }
         }
     }
 }

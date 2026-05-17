@@ -76,6 +76,10 @@ fun SettingsContent(
                 SettingsScreenRoute.Notifications -> NotificationSettingsContent(
                     onBackPressed = { currentScreen = SettingsScreenRoute.Main }
                 )
+
+                SettingsScreenRoute.Password -> PasswordSettingsContent(
+                    onBackPressed = { currentScreen = SettingsScreenRoute.Main }
+                )
             }
         }
     }

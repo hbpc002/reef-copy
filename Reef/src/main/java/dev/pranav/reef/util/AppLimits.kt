@@ -4,11 +4,17 @@ import android.content.Context
 import android.content.SharedPreferences
 import android.os.Process
 import androidx.core.content.edit
+import org.json.JSONObject
 import java.time.LocalDate
 import java.time.ZoneId
 
 private const val PREF_LIMITS = "app_limits"
 private const val PREF_LOCK = "app_lock"
+
+data class CyclicConfig(
+    val usageMinutes: Int,
+    val lockMinutes: Int
+)
 
 object AppLimits {
 
@@ -18,6 +24,9 @@ object AppLimits {
     private val lockDurations = mutableMapOf<String, Long>()
     private val lockUntil = mutableMapOf<String, Long>()
     private val reminderSent = mutableMapOf<String, Long>()
+    private val cyclicConfigs = mutableMapOf<String, CyclicConfig>()
+    private val cyclicCycleStartUsage = mutableMapOf<String, Long>()
+    private val cyclicLockUntil = mutableMapOf<String, Long>()
 
     fun init(context: Context) {
         prefs = context.getSharedPreferences(PREF_LIMITS, Context.MODE_PRIVATE)
@@ -25,16 +34,37 @@ object AppLimits {
         limits.clear()
         lockDurations.clear()
         lockUntil.clear()
+        cyclicConfigs.clear()
+        cyclicCycleStartUsage.clear()
+        cyclicLockUntil.clear()
 
         prefs.all.forEach { (k, v) ->
             if (v is Long) limits[k] = v
         }
         lockPrefs.all.forEach { (k, v) ->
-            if (v is Long) lockDurations[k] = v
-        }
-        lockPrefs.all.forEach { (k, v) ->
-            val key = k.removePrefix("lock_until_")
-            if (k.startsWith("lock_until_") && v is Long) lockUntil[key] = v
+            when {
+                k.startsWith("lock_until_") && v is Long -> {
+                    lockUntil[k.removePrefix("lock_until_")] = v
+                }
+                k.startsWith("cyclic_config_") && v is String -> {
+                    try {
+                        val json = JSONObject(v)
+                        cyclicConfigs[k.removePrefix("cyclic_config_")] = CyclicConfig(
+                            usageMinutes = json.getInt("usage"),
+                            lockMinutes = json.getInt("lock")
+                        )
+                    } catch (_: Exception) { }
+                }
+                k.startsWith("cyclic_start_") && v is Long -> {
+                    cyclicCycleStartUsage[k.removePrefix("cyclic_start_")] = v
+                }
+                k.startsWith("cyclic_lock_until_") && v is Long -> {
+                    cyclicLockUntil[k.removePrefix("cyclic_lock_until_")] = v
+                }
+                v is Long -> {
+                    lockDurations[k] = v
+                }
+            }
         }
     }
 
@@ -46,10 +76,47 @@ object AppLimits {
 
     fun hasLimit(pkg: String): Boolean = limits.containsKey(pkg)
 
+    fun setCyclicConfig(pkg: String, config: CyclicConfig?) {
+        if (config != null) {
+            cyclicConfigs[pkg] = config
+            lockPrefs.edit().putString("cyclic_config_$pkg", JSONObject().apply {
+                put("usage", config.usageMinutes)
+                put("lock", config.lockMinutes)
+            }.toString()).apply()
+        } else {
+            cyclicConfigs.remove(pkg)
+            lockPrefs.edit().remove("cyclic_config_$pkg").apply()
+        }
+    }
+
+    fun getCyclicConfig(pkg: String): CyclicConfig? = cyclicConfigs[pkg]
+
+    fun setCyclicCycleStartUsage(pkg: String, usageMs: Long) {
+        cyclicCycleStartUsage[pkg] = usageMs
+        lockPrefs.edit().putLong("cyclic_start_$pkg", usageMs).apply()
+    }
+
+    fun getCyclicCycleStartUsage(pkg: String): Long = cyclicCycleStartUsage[pkg] ?: 0L
+
+    fun setCyclicLockUntil(pkg: String, untilMs: Long) {
+        cyclicLockUntil[pkg] = untilMs
+        lockPrefs.edit().putLong("cyclic_lock_until_$pkg", untilMs).apply()
+    }
+
+    fun getCyclicLockUntilMs(pkg: String): Long = cyclicLockUntil[pkg] ?: 0L
+
+    fun isInCyclicLockPhase(pkg: String): Boolean {
+        return cyclicLockUntil[pkg]?.let { it > System.currentTimeMillis() } ?: false
+    }
+
     fun removeLimit(pkg: String) {
         limits.remove(pkg)
         lockDurations.remove(pkg)
         lockUntil.remove(pkg)
+        cyclicConfigs.remove(pkg)
+        cyclicCycleStartUsage.remove(pkg)
+        cyclicLockUntil.remove(pkg)
+        removeCyclicPrefs(pkg)
     }
 
     fun setLockDuration(pkg: String, minutes: Int) {
@@ -72,6 +139,13 @@ object AppLimits {
             lockUntil.remove(it)
             lockPrefs.edit().remove("lock_until_$it").apply()
         }
+    }
+
+    private fun removeCyclicPrefs(pkg: String) {
+        lockPrefs.edit().remove("cyclic_config_$pkg")
+            .remove("cyclic_start_$pkg")
+            .remove("cyclic_lock_until_$pkg")
+            .apply()
     }
 
     fun save() {

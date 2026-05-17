@@ -14,6 +14,7 @@ import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.Lock
 import androidx.compose.material.icons.rounded.Notifications
 import androidx.compose.material.icons.rounded.Timer
+import androidx.compose.material.icons.rounded.LockPerson
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
@@ -25,10 +26,8 @@ import androidx.core.content.edit
 import dev.pranav.reef.AboutActivity
 import dev.pranav.reef.R
 import dev.pranav.reef.services.AppLockService
-import dev.pranav.reef.ui.about.DonateButton
-import dev.pranav.reef.util.AppLimits
-import dev.pranav.reef.util.append
 import dev.pranav.reef.util.prefs
+
 
 @Composable
 fun MainSettingsContent(
@@ -67,11 +66,22 @@ fun MainSettingsContent(
             title = stringResource(R.string.notifications),
             subtitle = stringResource(R.string.notifications_subtitle),
             destination = SettingsScreenRoute.Notifications
+        ),
+        SettingsMenuItem(
+            icon = Icons.Rounded.LockPerson,
+            title = "App Lock",
+            subtitle = "Protect Reef with a PIN",
+            destination = SettingsScreenRoute.Password
         )
     )
 
     LazyColumn(
-        contentPadding = contentPadding.append(horizontal = 16.dp)
+        contentPadding = PaddingValues(
+            start = contentPadding.calculateStartPadding(androidx.compose.ui.unit.LayoutDirection.Ltr) + 16.dp,
+            end = contentPadding.calculateEndPadding(androidx.compose.ui.unit.LayoutDirection.Ltr) + 16.dp,
+            top = contentPadding.calculateTopPadding(),
+            bottom = contentPadding.calculateBottomPadding()
+        )
     ) {
         item {
             SettingsCard(index = 0, listSize = 2) {
@@ -156,6 +166,7 @@ fun MainSettingsContent(
                     when (item.destination) {
                         SettingsScreenRoute.Pomodoro -> onNavigate(SettingsScreenRoute.Pomodoro)
                         SettingsScreenRoute.Notifications -> onNavigate(SettingsScreenRoute.Notifications)
+                        SettingsScreenRoute.Password -> onNavigate(SettingsScreenRoute.Password)
                         SettingsScreenRoute.Main -> context.startActivity(
                             Intent(context, AboutActivity::class.java)
                         )
@@ -234,10 +245,6 @@ fun MainSettingsContent(
         //    }
         //}
 
-        item {
-            Spacer(modifier = Modifier.height(16.dp))
-            DonateButton()
-        }
     }
 }
 

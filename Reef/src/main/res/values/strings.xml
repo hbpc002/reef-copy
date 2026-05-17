@@ -328,6 +328,10 @@
     <string name="app_locked">App Locked</string>
     <string name="app_locked_message">%1$s has reached its daily limit</string>
     <string name="app_locked_for_minutes">%1$s locked for %2$d minutes</string>
+    <string name="cyclic_lock_message">%1$s locked for %2$d min (cooldown cycle)</string>
+    <string name="cyclic_mode">Cyclic Restriction</string>
+    <string name="cyclic_usage_per_cycle">Usage per cycle</string>
+    <string name="cyclic_lock_per_cycle">Lock per cycle</string>
 
     <!-- Notification Helper strings -->
     <string name="blocker_channel_name">Content Blocker</string>

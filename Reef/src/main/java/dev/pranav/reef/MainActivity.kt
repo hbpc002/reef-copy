@@ -50,6 +50,7 @@ import dev.pranav.reef.timer.TimerConfig
 import dev.pranav.reef.timer.TimerContent
 import dev.pranav.reef.timer.TimerStateManager
 import dev.pranav.reef.ui.ReefTheme
+import dev.pranav.reef.ui.lock.AppLockScreen
 import dev.pranav.reef.ui.focusstats.FocusSessionDetailScreen
 import dev.pranav.reef.ui.focusstats.FocusStatsScreen
 import dev.pranav.reef.util.*
@@ -58,6 +59,7 @@ class MainActivity: ComponentActivity() {
     private var pendingFocusModeStart = false
     private var hasCheckedPermissions = false
     private var shouldNavigateToTimer = false
+    private var unlockVersion by mutableIntStateOf(0)
 
     private val timerReceiver = object: BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
@@ -115,6 +117,21 @@ class MainActivity: ComponentActivity() {
         }
 
         setContent {
+            val needsLock = prefs.getBoolean("app_lock_enabled", false) &&
+                    prefs.getString("app_lock_pin_hash", null) != null
+            var isUnlocked by remember { mutableStateOf(!needsLock) }
+
+            LaunchedEffect(unlockVersion) {
+                if (needsLock) isUnlocked = false
+            }
+
+            if (!isUnlocked && needsLock) {
+                ReefTheme {
+                    AppLockScreen(onUnlock = { isUnlocked = true })
+                }
+                return@setContent
+            }
+
             val navController = rememberNavController()
             val timerState by TimerStateManager.state.collectAsState()
             val navBackStackEntry by navController.currentBackStackEntryAsState()
@@ -364,6 +381,8 @@ class MainActivity: ComponentActivity() {
                                 remember(pkgName) { (AppLimits.getLimit(pkgName) / 60000).toInt() }
                             val existingLockDurationMinutes =
                                 remember(pkgName) { (AppLimits.getLockDurationMs(pkgName) / 60000).toInt() }
+                            val existingCyclicConfig =
+                                remember(pkgName) { AppLimits.getCyclicConfig(pkgName) }
                             var weekOffset by remember { mutableIntStateOf(0) }
                             val dailyData by remember(pkgName, weekOffset) {
                                 derivedStateOf {
@@ -381,10 +400,18 @@ class MainActivity: ComponentActivity() {
                                 packageName = pkgName,
                                 existingLimitMinutes = existingLimitMinutes,
                                 existingLockDurationMinutes = existingLockDurationMinutes,
+                                existingCyclicConfig = existingCyclicConfig,
                                 dailyData = dailyData,
                                 onSave = { minutes, lockDuration ->
                                     AppLimits.setLimit(pkgName, minutes)
                                     AppLimits.setLockDuration(pkgName, lockDuration)
+                                    AppLimits.setCyclicConfig(pkgName, null)
+                                    AppLimits.save()
+                                    navController.popBackStack()
+                                },
+                                onSaveCyclic = { config ->
+                                    AppLimits.setCyclicConfig(pkgName, config)
+                                    AppLimits.removeLimit(pkgName)
                                     AppLimits.save()
                                     navController.popBackStack()
                                 },
@@ -538,6 +565,9 @@ class MainActivity: ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
+        val lockEnabled = prefs.getBoolean("app_lock_enabled", false) &&
+                prefs.getString("app_lock_pin_hash", null) != null
+        if (lockEnabled) unlockVersion++
         if (!hasCheckedPermissions && !prefs.getBoolean("first_run", true)) {
             hasCheckedPermissions = true
             checkAndRequestMissingPermissions()
