@@ -10,6 +10,7 @@ import android.content.Context
 import android.content.Intent
 import android.os.IBinder
 import android.provider.Settings
+import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.content.edit
 import dev.pranav.reef.MainActivity
@@ -23,7 +24,11 @@ class KeepAliveService : Service() {
     override fun onCreate() {
         super.onCreate()
         createNotificationChannel()
-        startForeground(NOTIFICATION_ID, createNotification())
+        try {
+            startForeground(NOTIFICATION_ID, createNotification())
+        } catch (e: SecurityException) {
+            Log.w(TAG, "POST_NOTIFICATIONS not granted, startForeground skipped")
+        }
         recoverServices()
     }
 
@@ -138,6 +143,7 @@ class KeepAliveService : Service() {
     }
 
     companion object {
+        private const val TAG = "KeepAliveService"
         private const val NOTIFICATION_ID = 9001
         private const val CHANNEL_ID = "keep_alive_service"
         private const val ALERT_CHANNEL_ID = "reef_alerts"

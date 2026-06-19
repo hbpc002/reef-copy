@@ -116,11 +116,15 @@ object AppLimits {
         cyclicConfigs.remove(pkg)
         cyclicCycleStartUsage.remove(pkg)
         cyclicLockUntil.remove(pkg)
+        lockPrefs.edit().remove("lock_until_$pkg")
+            .remove(pkg)
+            .apply()
         removeCyclicPrefs(pkg)
     }
 
     fun setLockDuration(pkg: String, minutes: Int) {
         lockDurations[pkg] = minutes * 60_000L
+        lockPrefs.edit().putLong(pkg, minutes * 60_000L).apply()
     }
 
     fun getLockDurationMs(pkg: String): Long = lockDurations[pkg] ?: 0L

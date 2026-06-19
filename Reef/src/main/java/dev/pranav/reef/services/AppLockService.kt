@@ -30,7 +30,11 @@ class AppLockService : Service() {
     override fun onCreate() {
         super.onCreate()
         createNotificationChannel()
-        startForeground(NOTIFICATION_ID, createNotification())
+        try {
+            startForeground(NOTIFICATION_ID, createNotification())
+        } catch (e: SecurityException) {
+            Log.w(TAG, "POST_NOTIFICATIONS not granted, startForeground skipped")
+        }
         startPeriodicCheck()
     }
 
